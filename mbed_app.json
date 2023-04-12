@@ -1,0 +1,6 @@
+{
+  "requires": [],
+  "target_overrides": {
+    "*": {}
+  }
+}

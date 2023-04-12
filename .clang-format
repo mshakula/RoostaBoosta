@@ -1,0 +1,41 @@
+# RoostaBoosta clang-format style options.
+---
+Language: Cpp
+Standard: Auto
+BasedOnStyle: Mozilla
+
+AccessModifierOffset: -1
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveAssignments: true
+AlignConsecutiveBitFields: true
+AlignConsecutiveDeclarations: true
+AlignEscapedNewlines: Left
+AlignOperands: DontAlign
+AlwaysBreakAfterReturnType: TopLevel
+BraceWrapping: 
+  AfterCaseLabel: false
+  AfterClass: true
+  AfterControlStatement: false
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: true
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+BreakBeforeBraces: Custom
+BreakInheritanceList: AfterColon
+BreakConstructorInitializers: AfterColon
+ConstructorInitializerIndentWidth: 4
+Cpp11BracedListStyle: true
+PackConstructorInitializers: CurrentLine
+FixNamespaceComments: true
+IndentExternBlock: NoIndent
+IndentRequiresClause: false
