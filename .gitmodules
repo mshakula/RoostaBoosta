@@ -1,3 +1,6 @@
 [submodule "third_party/mbed-os"]
 	path = third_party/mbed-os
 	url = https://github.com/ARMmbed/mbed-os.git
+[submodule "third_party/4DGL-uLCD-144-MbedOS6"]
+	path = third_party/4DGL-uLCD-144-MbedOS6
+	url = https://github.com/mshakula/4DGL-uLCD-144-MbedOS6.git
