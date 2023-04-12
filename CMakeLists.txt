@@ -10,19 +10,22 @@ include(cmake/mbed-setup.cmake)
 
 project(
   RoostaBoosta
-  VERSION 0.0.0
+  VERSION 0.0.1
   DESCRIPTION
     "IoT Weather Alarm Clock - Georgia Tech ECE 4180 Spring 2023 Final Project"
   HOMEPAGE_URL https://github.com/mshakula/RoostaBoosta
   LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # ======================================================
 # External libraries.
+
 add_subdirectory(third_party/mbed-os)
 
 # ======================================================
