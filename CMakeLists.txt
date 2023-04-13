@@ -27,6 +27,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # External libraries.
 
 add_subdirectory(third_party/mbed-os)
+add_subdirectory(third_party/4DGL-uLCD-144-MbedOS6)
 
 # ======================================================
 # Main target.
@@ -40,5 +41,6 @@ set_target_properties(
                           OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}")
 
 target_link_libraries(RoostaBoosta PRIVATE mbed-os)
+target_link_libraries(RoostaBoosta PRIVATE 4DGL-uLCD-144-MBedOS6)
 
 mbed_set_post_build(RoostaBoosta)
