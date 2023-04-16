@@ -1,0 +1,10 @@
+# hw/.gitignore
+#
+
+!.gitignore
+
+# KiCAD unneccessary files
+**/*-backups
+**/#auto_saved_files#
+*.kicad_prl
+fp-info-cache
