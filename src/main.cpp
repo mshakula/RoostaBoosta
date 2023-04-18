@@ -23,11 +23,15 @@ main()
   DigitalOut led(LED1);
 
   while (true) {
+    uLCD.cls();
+    ThisThread::sleep_for(100ms);
     led = !led;
-    uLCD.text_string("working", 2, 4, FONT_7X8, GREEN);
-    ThisThread::sleep_for(500ms);
+    uLCD.text_string("Testing 1", 2, 4, FONT_7X8, GREEN);
+    ThisThread::sleep_for(2s);
     led = !led;
     uLCD.cls();
-    ThisThread::sleep_for(500ms);
+    ThisThread::sleep_for(100ms);
+    uLCD.text_string("Testing 2", 4, 2, FONT_7X8, GREEN);
+    ThisThread::sleep_for(2s);
   }
 }
