@@ -4,6 +4,8 @@
 ///
 /// \brief The main entrypoint for the program.
 
+#include "pinout.hpp"
+
 #include <mbed.h>
 
 // ======================= Local Definitions =========================
