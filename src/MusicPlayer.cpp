@@ -54,7 +54,7 @@ std::uint32_t audio_buf[kBankCount][MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE]
 /// \brief The callback functor type for when the DMA encounters an error.
 struct ErrorCallback_
 {
-  void operator()() { error("Error in DMA Callback\r\n"); }
+  void operator()() { error("Error in DMA Callback"); }
 };
 
 /// \brief The callback functor type for when the music player DAC runs out of
@@ -221,19 +221,19 @@ playMusic(const char* file_name, double initial_speed)
 
   // Open file and get its data.
   if (!initFile_(file_name, file_info)) {
-    error("[MusicPlayer] Cannot open file %s!\r\n", file_info.name);
+    error("[MusicPlayer] Cannot open file %s!", file_info.name);
     return;
   }
 
   // Fill initial two buffer banks.
   for (int i = 0; i < kBankCount; ++i) {
     if (readBuffer_(file_info, more, audio_buf[i])) {
-      error("[MusicPlayer] Error reading file %s!\r\n", file_info.name);
+      error("[MusicPlayer] Error reading file %s!", file_info.name);
       goto end;
     }
   }
 
-  debug("[MusicPlayer] Loaded initial banks.\r\n");
+  debug("\r\n[MusicPlayer] Loaded initial banks.");
 
   // Configure Banks
   for (int i = 0; i < kBankCount; ++i) {
@@ -249,11 +249,11 @@ playMusic(const char* file_name, double initial_speed)
   bank_conf[0].channelNum(MODDMA::Channel_0);
   bank_conf[1].channelNum(MODDMA::Channel_1);
 
-  debug("[MusicPlayer] Configured initial banks.\r\n");
+  debug("\r\n[MusicPlayer] Configured initial banks.");
 
   // Start DMA to DAC.
   if (!DMA.Setup(&bank_conf[0])) {
-    error("[MusicPlayer] Error in initial DMA Setup()!\r\n");
+    error("[MusicPlayer] Error in initial DMA Setup()!");
     goto end;
   }
 
@@ -263,27 +263,26 @@ playMusic(const char* file_name, double initial_speed)
     kClockFreq / initial_speed / 2 / (file_info.rate ? file_info.rate : 24000));
   LPC_DAC->DACCTRL |= 0xC; // Start running DAC.
 
-  debug("[MusicPlayer] DAC enabled.\r\n");
+  debug("\r\n[MusicPlayer] DAC enabled.");
 
   DMA.Enable(&bank_conf[0]);
 
-  debug("[MusicPlayer] DMA enabled.\r\n");
+  debug("\r\n[MusicPlayer] DMA enabled.");
 
   // Start audio buffering loop.
-  debug("[MusicPlayer] Starting audio buffering idle loop.\r\n");
+  debug("\r\n[MusicPlayer] Starting audio buffering idle loop.");
   osSignalWait(EVENT_FLAG_AUDIO_LOAD, osWaitForever);
   while (more) {
-    // debug("[MusicPlayer] Fetching more from file...");
+    // debug("\r\n[MusicPlayer] Fetching more from file...");
     int next_bank = (curr_bank - 1 + kBankCount) % kBankCount;
     if (readBuffer_(file_info, more, audio_buf[next_bank])) {
-      error(
-        "[MusicPlayer] Error fetching more from file %s!\r\n", file_info.name);
+      error("[MusicPlayer] Error fetching more from file %s!", file_info.name);
       goto end2;
     }
-    // debug(" done.\r\n");
+    // debug(" done.");
     osSignalWait(EVENT_FLAG_AUDIO_LOAD, osWaitForever);
   }
-  debug("[MusicPlayer] Finished playing audio.\r\n");
+  debug("\r\n[MusicPlayer] Finished playing audio.");
 
 end2:
   LPC_DAC->DACCTRL &= ~(0xC); // Stop running DAC.

@@ -13,6 +13,7 @@
 
 #include <FATFileSystem.h>
 #include <SDBlockDevice.h>
+#include <hal/spi_api.h>
 
 #include "LCD_Control.hpp"
 #include "MusicPlayer.h"
@@ -29,10 +30,10 @@ printdir()
   DIR* d = opendir(SCRATCH_DIR);
   if (!d)
     return 1;
-  printf("[main] Dumping %s: {\r\n", SCRATCH_DIR);
+  printf("\r\n[main] Dumping %s: {", SCRATCH_DIR);
   for (struct dirent* e = readdir(d); e; e = readdir(d))
-    printf("  %s\r\n", e->d_name);
-  printf("}\r\n");
+    printf("\r\n  %s", e->d_name);
+  printf("\r\n}");
   closedir(d);
   return 0;
 }
@@ -95,41 +96,48 @@ select_random_pcm()
 int
 main()
 {
-  debug("[main] Starting up.\r\n");
+  debug("\r\n[main] Starting up.");
 
-  debug("[main] Seeding rand...");
+  debug("\r\n[main] Seeding rand...");
   srand(time(NULL));
-  debug(" rand() = %d... done.\r\n", rand() % 100);
+  debug(" rand() = %d... done.", rand() % 100);
 
-  debug("[main] Initializing SD Block Device...");
+  debug("\r\n[main] Initializing SD Block Device...");
+
   SDBlockDevice sd(
     rb::pinout::kSD_mosi,
     rb::pinout::kSD_miso,
     rb::pinout::kSD_sck,
     rb::pinout::kSD_cs);
-  debug(" done.\r\n");
+  {
+    spi_capabilities_t caps;
+    spi_get_capabilities(rb::pinout::kSD_cs, true, &caps);
+    debug(" maxumum speed: %d...", caps.maximum_frequency);
+    sd.frequency(caps.maximum_frequency);
+  }
+  debug(" done.");
 
-  debug("[main] Mounting SD card...");
+  debug("\r\n[main] Mounting SD card...");
   FATFileSystem fs(AUX_MOUNT_POINT, &sd);
-  debug(" done.\r\n");
+  debug(" done.");
 
-  // debug("[main] Reformatting SD card...");
+  // debug("\r\n[main] Reformatting SD card...");
   // if (fs.reformat(&sd)) {
   //   MBED_ERROR(
   //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
   //     "Could not reformat SD card.");
   // }
-  // debug(" done.\r\n");
+  // debug(" done.");
 
-  debug("[main] Opening root file directory...");
+  debug("\r\n[main] Opening root file directory...");
   if (printdir()) {
     MBED_ERROR(
       MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
       "Could not open root file directory.");
   }
-  debug(" done.\r\n");
+  debug(" done.");
 
-  // debug("[main] Testing open/close file...");
+  // debug("\r\n[main] Testing open/close file...");
   // FILE* f = fopen(SCRATCH_DIR "test.txt", "w");
   // if (!f) {
   //   MBED_ERROR(
@@ -141,9 +149,9 @@ main()
   //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno), "Could not close
   //     file.");
   // }
-  // debug(" done.\r\n");
+  // debug(" done.");
 
-  // debug("[main] Testing creating / destroy directory...");
+  // debug("\r\n[main] Testing creating / destroy directory...");
   // if (mkdir(SCRATCH_DIR "mydir", 0777)) {
   //   MBED_ERROR(
   //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
@@ -154,15 +162,15 @@ main()
   //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
   //     "Could not destroy directory.");
   // }
-  // debug(" done.\r\n");
+  // debug(" done.");
 
   while (true) {
-    debug("[main] Selecting random PCM file...");
+    debug("\r\n[main] Selecting random PCM file...");
     auto f_name = select_random_pcm();
-    debug(" done.\r\n");
+    debug(" done.");
 
-    debug("[main] Playing file %s...", f_name.c_str());
+    debug("\r\n[main] Playing file %s...", f_name.c_str());
     playMusic(f_name.c_str(), 1.0);
-    debug(" done.\r\n");
+    debug(" done.");
   }
 }
