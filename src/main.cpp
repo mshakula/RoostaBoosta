@@ -11,7 +11,7 @@
 #include <SDBlockDevice.h>
 
 #include "LCD_Control.hpp"
-#include "MusicPlayer.hpp"
+#include "MusicPlayer.h"
 #include "pinout.hpp"
 #include "weather_data.hpp"
 

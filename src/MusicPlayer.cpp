@@ -5,10 +5,12 @@
 /// \brief The MusicPlayer implementation. In separate file because it is quite
 /// complex.
 
-#include "MusicPlayer.hpp"
+#include "MusicPlayer.h"
 
 #include <cstdint>
 #include <cstring>
+
+#include <mutex>
 
 #include <mbed.h>
 #include <rtos.h>
@@ -197,13 +199,20 @@ readBuffer_(FileInfo_& file_info, bool& more, std::uint32_t* buffer)
 
 // ====================== Global Definitions =========================
 
-void
+extern "C" void
 playMusic(const char* file_name, double initial_speed)
 {
+  // Non-reentrant function due to need of static variables and contention on
+  // DMA bus.
+  static rtos::Mutex mutex;
+  std::scoped_lock   lock(mutex);
+
   static const int kClockFreq = configDACClock_();
 
-  static FileInfo_ file_info; // allocate decoding structs in static memory.
-  bool             more = true;
+  // allocate large decoding structs in static memory.
+  static FileInfo_ file_info;
+
+  bool more = true;
 
   volatile int   curr_bank = 0;
   MODDMA_Config  bank_conf[kBankCount];
