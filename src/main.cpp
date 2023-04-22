@@ -5,7 +5,8 @@
 /// \brief The main entrypoint for the program.
 
 #include <mbed.h>
-#include <4DGL-uLCD-144-MBedOS6/uLCD_4DGL.hpp>
+#include "weather_data.hpp"
+#include "LCD_Control.hpp"
 
 // ======================= Local Definitions =========================
 
@@ -15,23 +16,19 @@ namespace {
 
 // ====================== Global Definitions =========================
 
-uLCD_4DGL uLCD(p28,p27,p30); // serial tx, serial rx, reset pin;
-
 int
 main()
 {
   DigitalOut led(LED1);
-
+  weather_data* data = (weather_data*) malloc(sizeof(weather_data));
+  data->humidity = 100;
+  data->precipitation_chance = 100;
+  data->temperature = 78;
+  data->wind_speed = 15;
+  data->weather = "Chance Rain Showers";
   while (true) {
-    uLCD.cls();
-    ThisThread::sleep_for(100ms);
     led = !led;
-    uLCD.text_string("Testing 1", 2, 4, FONT_7X8, GREEN);
-    ThisThread::sleep_for(2s);
-    led = !led;
-    uLCD.cls();
-    ThisThread::sleep_for(100ms);
-    uLCD.text_string("Testing 2", 4, 2, FONT_7X8, GREEN);
-    ThisThread::sleep_for(2s);
+    Display_Weather(data);
+    ThisThread::sleep_for(10s);
   }
 }
