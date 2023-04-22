@@ -38,7 +38,7 @@ cmake -S <project_dir> -B <output_directory>
 cmake --build <output_directory> -t RoostaBoosta
 ```
 
-### Online Compiler / MBed Studio / Other compilers
+### Online Compiler / Mbed Studio / Other compilers
 
 We decided to use the Mbed CLI 2 / CMake as our main build tool since that seems to be the most actively supported solution for Mbed. Regardless, if another compilation solution is necessary, it may be possible to add add support with the following:
 

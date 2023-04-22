@@ -34,13 +34,15 @@ add_subdirectory(third_party/4DGL-uLCD-144-MbedOS6)
 
 add_executable(RoostaBoosta)
 
-target_sources(RoostaBoosta PRIVATE src/main.cpp)
+file(GLOB sources CONFIGURE_DEPENDS src/*.cpp src/*.h)
+
+target_sources(RoostaBoosta PRIVATE ${sources})
 
 set_target_properties(
   RoostaBoosta PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}"
                           OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}")
 
 target_link_libraries(RoostaBoosta PRIVATE mbed-os)
-target_link_libraries(RoostaBoosta PRIVATE 4DGL-uLCD-144-MBedOS6)
+target_link_libraries(RoostaBoosta PRIVATE 4DGL-uLCD-144-MbedOS6)
 
 mbed_set_post_build(RoostaBoosta)
