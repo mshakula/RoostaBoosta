@@ -28,6 +28,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_subdirectory(third_party/mbed-os)
 add_subdirectory(third_party/4DGL-uLCD-144-MbedOS6)
+add_subdirectory(third_party/MODDMA)
 
 # ======================================================
 # Main target.
@@ -42,7 +43,11 @@ set_target_properties(
   RoostaBoosta PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}"
                           OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}")
 
-target_link_libraries(RoostaBoosta PRIVATE mbed-os)
+# also have to enable in mbed_app.json
+target_link_libraries(
+  RoostaBoosta PRIVATE mbed-os mbed-storage-blockdevice mbed-storage-filesystem
+                       mbed-storage-sd mbed-storage-fat)
 target_link_libraries(RoostaBoosta PRIVATE 4DGL-uLCD-144-MbedOS6)
+target_link_libraries(RoostaBoosta PRIVATE MODDMA)
 
 mbed_set_post_build(RoostaBoosta)
