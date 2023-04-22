@@ -25,15 +25,15 @@
       "macro_name": "SCRATCH_DIR",
       "value": "\"/\" AUX_MOUNT_POINT \"/\""
     },
+    "audio_dir": {
+      "help": "Audio storage directory in the auxiliary storage",
+      "macro_name": "AUDIO_DIR",
+      "value": "\"/\" AUX_MOUNT_POINT \"/audio/\""
+    },
     "event_flag.audio_load": {
       "help": "Event flag for audio load.",
       "macro_name": "EVENT_FLAG_AUDIO_LOAD",
       "value": "0x1"
-    },
-    "music_demo_file": {
-      "help": "Music file to play as a demo",
-      "macro_name": "MUSIC_DEMO_FILE",
-      "value": "SCRATCH_DIR \"moricone.pcm\""
     },
     "MusicPlayer.audio_buf_bank_size": {
       "help": "Size of the audio buffer bank in samples (uint32_t). 1 << 9 == 512 seems to be the lower limit, after which it becomes crunchy again.",

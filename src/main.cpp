@@ -5,6 +5,10 @@
 ///
 /// \brief The main entrypoint for the program.
 
+#include <array>
+#include <string>
+#include <string_view>
+
 #include <mbed.h>
 
 #include <FATFileSystem.h>
@@ -33,6 +37,57 @@ printdir()
   return 0;
 }
 
+std::string
+select_random_pcm()
+{
+  DIR* d = opendir(AUDIO_DIR);
+  if (!d)
+    MBED_ERROR(
+      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
+      "Could not open root file directory.");
+
+  std::array<std::uint16_t, 100> pcm_files_indices;
+  int                            pcm_files_count = 0;
+  {
+    int i = 0;
+    for (struct dirent* e = readdir(d);
+         e && pcm_files_count < pcm_files_indices.size();
+         e = readdir(d)) {
+      std::string_view name = e->d_name;
+      std::string_view ext  = name.substr(name.find_last_of('.'));
+      if (ext == ".pcm") {
+        pcm_files_indices[pcm_files_count++] = i;
+      }
+      ++i;
+    }
+  }
+  if (errno) {
+    MBED_ERROR(
+      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
+      "Error in traversing directory.");
+  }
+  if (pcm_files_indices.empty()) {
+    MBED_ERROR(
+      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, ENOENT),
+      "No PCM files found in root file directory.");
+  }
+
+  rewinddir(d);
+  {
+    int            i           = 0;
+    int            target_file = pcm_files_indices[rand() % pcm_files_count];
+    struct dirent* e;
+
+    do {
+      e = readdir(d);
+    } while (i++ != target_file);
+
+    std::string ret = std::string(AUDIO_DIR) + std::string(e->d_name);
+    closedir(d);
+    return ret;
+  }
+}
+
 } // namespace
 
 // ====================== Global Definitions =========================
@@ -41,6 +96,10 @@ int
 main()
 {
   debug("[main] Starting up.\r\n");
+
+  debug("[main] Seeding rand...");
+  srand(time(NULL));
+  debug(" rand() = %d... done.\r\n", rand() % 100);
 
   debug("[main] Initializing SD Block Device...");
   SDBlockDevice sd(
@@ -97,13 +156,13 @@ main()
   // }
   // debug(" done.\r\n");
 
-  debug("[main] Playing with file...");
-  playMusic(MUSIC_DEMO_FILE, 1.0);
-  debug(" done.\r\n");
+  while (true) {
+    debug("[main] Selecting random PCM file...");
+    auto f_name = select_random_pcm();
+    debug(" done.\r\n");
 
-end0:
-  do {
-    printf("AM DEAD\r\n");
-    ThisThread::sleep_for(1s);
-  } while (true);
+    debug("[main] Playing file %s...", f_name.c_str());
+    playMusic(f_name.c_str(), 1.0);
+    debug(" done.\r\n");
+  }
 }
