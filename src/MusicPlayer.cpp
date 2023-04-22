@@ -287,7 +287,8 @@ playMusic(const char* file_name, double initial_speed)
 
 end2:
   LPC_DAC->DACCTRL &= ~(0xC); // Stop running DAC.
-  DMA.Disable((MODDMA::CHANNELS)DMA.getConfig()->channelNum());
+  DMA.Disable(MODDMA::Channel_0);
+  DMA.Disable(MODDMA::Channel_1);
 end:
   deinitFile_(file_info);
 }
