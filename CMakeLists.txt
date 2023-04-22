@@ -10,7 +10,7 @@ include(cmake/mbed-setup.cmake)
 
 project(
   RoostaBoosta
-  VERSION 0.0.1
+  VERSION 0.0.2
   DESCRIPTION
     "IoT Weather Alarm Clock - Georgia Tech ECE 4180 Spring 2023 Final Project"
   HOMEPAGE_URL https://github.com/mshakula/RoostaBoosta
@@ -27,18 +27,22 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # External libraries.
 
 add_subdirectory(third_party/mbed-os)
+add_subdirectory(third_party/4DGL-uLCD-144-MbedOS6)
 
 # ======================================================
 # Main target.
 
 add_executable(RoostaBoosta)
 
-target_sources(RoostaBoosta PRIVATE src/main.cpp)
+file(GLOB sources CONFIGURE_DEPENDS src/*.cpp src/*.h)
+
+target_sources(RoostaBoosta PRIVATE ${sources})
 
 set_target_properties(
   RoostaBoosta PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}"
                           OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}")
 
 target_link_libraries(RoostaBoosta PRIVATE mbed-os)
+target_link_libraries(RoostaBoosta PRIVATE 4DGL-uLCD-144-MbedOS6)
 
 mbed_set_post_build(RoostaBoosta)
