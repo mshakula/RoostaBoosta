@@ -20,7 +20,7 @@ struct weather_data
   int         precipitation_chance;
   int         temperature;
   int         wind_speed;
-  const char* weather; // static size arr to avoid extra pointers
+  const char* weather; 
 };
 
 // ===================== Detail Implementation =======================

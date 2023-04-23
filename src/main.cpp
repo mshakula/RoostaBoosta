@@ -18,6 +18,7 @@
 #include "LCD_Control.hpp"
 #include "MusicPlayer.h"
 #include "pinout.hpp"
+#include "audio_player.hpp"
 #include "weather_data.hpp"
 
 // ======================= Local Definitions =========================
@@ -163,14 +164,25 @@ main()
   //     "Could not destroy directory.");
   // }
   // debug(" done.");
-
+  weather_data* data         = (weather_data*)malloc(sizeof(weather_data));
+  data->humidity             = 35;
+  data->precipitation_chance = 76;
+  data->temperature          = 78;
+  data->wind_speed           = 15;
+  const char* w = "it is partly cloudy";
+  data->weather = w;
   while (true) {
-    debug("\r\n[main] Selecting random PCM file...");
-    auto f_name = select_random_pcm();
-    debug(" done.");
+    // debug("\r\n[main] Selecting random PCM file...");
+    // auto f_name = select_random_pcm();
+    // debug(" done.");
 
-    debug("\r\n[main] Playing file %s...", f_name.c_str());
-    playMusic(f_name.c_str(), 1.0);
-    debug(" done.");
+    // debug("\r\n[main] Playing file %s...", f_name.c_str());
+    // playMusic(f_name.c_str(), 1.0);
+    // debug(" done.");
+    Display_Weather(data);
+    ThisThread::sleep_for(1s);
+    play_audio(data);
+    ThisThread::sleep_for(10s);
+
   }
 }
