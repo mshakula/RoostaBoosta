@@ -257,10 +257,9 @@ playMusic(const char* file_name, double initial_speed)
     goto end;
   }
 
-  // Configure and start DAC. Assume 24kHz for PCM (seems to work well @ this
-  // speed).
   LPC_DAC->DACCNTVAL = static_cast<std::uint16_t>(
-    kClockFreq / initial_speed / 2 / (file_info.rate ? file_info.rate : 24000));
+    kClockFreq / initial_speed /
+    (file_info.rate ? file_info.rate : MUSIC_PLAYER_DEFAULT_PCM_RATE));
   LPC_DAC->DACCTRL |= 0xC; // Start running DAC.
 
   debug("\r\n[MusicPlayer] DAC enabled.");

@@ -30,6 +30,11 @@
       "macro_name": "AUDIO_DIR",
       "value": "\"/\" AUX_MOUNT_POINT \"/audio/\""
     },
+    "sfx_dir": {
+      "help": "Audio effects directory in the auxiliary storage",
+      "macro_name": "SFX_DIR",
+      "value": "\"/\" AUX_MOUNT_POINT \"/sounds/\""
+    },
     "event_flag.audio_load": {
       "help": "Event flag for audio load.",
       "macro_name": "EVENT_FLAG_AUDIO_LOAD",
@@ -39,6 +44,11 @@
       "help": "Size of the audio buffer bank in samples (uint32_t). 1 << 9 == 512 seems to be the lower limit, after which it becomes crunchy again.",
       "macro_name": "MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE",
       "value": "(1 << 11)"
+    },
+    "MusicPlayer.default_pcm_rate": {
+      "help": "Default PCM rate for the music player.",
+      "macro_name": "MUSIC_PLAYER_DEFAULT_PCM_RATE",
+      "value": "24000"
     }
   }
 }

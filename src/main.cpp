@@ -17,9 +17,9 @@
 
 #include "LCD_Control.hpp"
 #include "MusicPlayer.h"
-#include "pinout.hpp"
 #include "audio_player.hpp"
-#include "weather_data.hpp"
+#include "pinout.hpp"
+#include "weather_data.h"
 
 // ======================= Local Definitions =========================
 
@@ -39,57 +39,6 @@ printdir()
   return 0;
 }
 
-std::string
-select_random_pcm()
-{
-  DIR* d = opendir(AUDIO_DIR);
-  if (!d)
-    MBED_ERROR(
-      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
-      "Could not open root file directory.");
-
-  std::array<std::uint16_t, 100> pcm_files_indices;
-  int                            pcm_files_count = 0;
-  {
-    int i = 0;
-    for (struct dirent* e = readdir(d);
-         e && pcm_files_count < pcm_files_indices.size();
-         e = readdir(d)) {
-      std::string_view name = e->d_name;
-      std::string_view ext  = name.substr(name.find_last_of('.'));
-      if (ext == ".pcm") {
-        pcm_files_indices[pcm_files_count++] = i;
-      }
-      ++i;
-    }
-  }
-  if (errno) {
-    MBED_ERROR(
-      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
-      "Error in traversing directory.");
-  }
-  if (pcm_files_indices.empty()) {
-    MBED_ERROR(
-      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, ENOENT),
-      "No PCM files found in root file directory.");
-  }
-
-  rewinddir(d);
-  {
-    int            i           = 0;
-    int            target_file = pcm_files_indices[rand() % pcm_files_count];
-    struct dirent* e;
-
-    do {
-      e = readdir(d);
-    } while (i++ != target_file);
-
-    std::string ret = std::string(AUDIO_DIR) + std::string(e->d_name);
-    closedir(d);
-    return ret;
-  }
-}
-
 } // namespace
 
 // ====================== Global Definitions =========================
@@ -104,7 +53,6 @@ main()
   debug(" rand() = %d... done.", rand() % 100);
 
   debug("\r\n[main] Initializing SD Block Device...");
-
   SDBlockDevice sd(
     rb::pinout::kSD_mosi,
     rb::pinout::kSD_miso,
@@ -122,14 +70,6 @@ main()
   FATFileSystem fs(AUX_MOUNT_POINT, &sd);
   debug(" done.");
 
-  // debug("\r\n[main] Reformatting SD card...");
-  // if (fs.reformat(&sd)) {
-  //   MBED_ERROR(
-  //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
-  //     "Could not reformat SD card.");
-  // }
-  // debug(" done.");
-
   debug("\r\n[main] Opening root file directory...");
   if (printdir()) {
     MBED_ERROR(
@@ -138,51 +78,18 @@ main()
   }
   debug(" done.");
 
-  // debug("\r\n[main] Testing open/close file...");
-  // FILE* f = fopen(SCRATCH_DIR "test.txt", "w");
-  // if (!f) {
-  //   MBED_ERROR(
-  //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno), "Could not open
-  //     file.");
-  // }
-  // if (fclose(f)) {
-  //   MBED_ERROR(
-  //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno), "Could not close
-  //     file.");
-  // }
-  // debug(" done.");
-
-  // debug("\r\n[main] Testing creating / destroy directory...");
-  // if (mkdir(SCRATCH_DIR "mydir", 0777)) {
-  //   MBED_ERROR(
-  //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
-  //     "Could not create directory.");
-  // }
-  // if (remove(SCRATCH_DIR "mydir")) {
-  //   MBED_ERROR(
-  //     MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
-  //     "Could not destroy directory.");
-  // }
-  // debug(" done.");
+  debug("\r\n[main] Running weather demo...");
   weather_data* data         = (weather_data*)malloc(sizeof(weather_data));
   data->humidity             = 35;
   data->precipitation_chance = 76;
   data->temperature          = 78;
   data->wind_speed           = 15;
-  const char* w = "it is partly cloudy";
-  data->weather = w;
+  const char* w              = "it is partly cloudy";
+  data->weather              = w;
   while (true) {
-    // debug("\r\n[main] Selecting random PCM file...");
-    // auto f_name = select_random_pcm();
-    // debug(" done.");
-
-    // debug("\r\n[main] Playing file %s...", f_name.c_str());
-    // playMusic(f_name.c_str(), 1.0);
-    // debug(" done.");
     Display_Weather(data);
     ThisThread::sleep_for(1s);
     play_audio(data);
     ThisThread::sleep_for(10s);
-
   }
 }

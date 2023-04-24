@@ -6,14 +6,15 @@
 
 #ifndef AUDIO_PLAYER_H
 #define AUDIO_PLAYER_H
-#include "weather_data.hpp"
+
+#include "weather_data.h"
 
 // ======================= Public Interface ==========================
 
 /// \brief reads the weather data on the speaker
 ///
 /// \param data The weather data to print.
-void 
+extern "C" void
 play_audio(weather_data* data);
 
 // ===================== Detail Implementation =======================
