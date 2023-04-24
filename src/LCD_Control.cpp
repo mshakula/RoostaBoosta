@@ -11,7 +11,7 @@
 #include <4DGL-uLCD-144-MbedOS6/uLCD_4DGL.hpp>
 
 #include "pinout.hpp"
-#include "weather_data.hpp"
+#include "weather_data.h"
 
 // ======================= Local Definitions =========================
 
