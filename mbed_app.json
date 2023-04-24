@@ -1,12 +1,14 @@
 {
-  "requires": [],
+  "config": {},
   "target_overrides": {
     "*": {
       "target.components_add": [
         "SD"
       ],
       "platform.stdio-baud-rate": 115200,
-      "platform.error-filename-capture-enabled": true
+      "platform.error-filename-capture-enabled": true,
+      "platform.callback-nontrivial": true,
+      "rtos.main-thread-stack-size": 2048
     }
   },
   "config": {

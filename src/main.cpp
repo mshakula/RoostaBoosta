@@ -17,6 +17,7 @@
 #include <SDBlockDevice.h>
 #include <hal/spi_api.h>
 
+#include "HTTPClient.hpp"
 #include "LCD_Control.hpp"
 #include "MusicPlayer.h"
 #include "audio_player.hpp"
