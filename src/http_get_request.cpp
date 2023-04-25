@@ -1,6 +1,6 @@
 #include "http_get_request.h"
 
-int http_get_request(EthernetInterface* net, char* address, char* payload, char* header, char* respBuffer, size_t respBufferSize) {
+int http_get_request(EthernetInterface* net, const char* address, const char* payload, const char* header, char* respBuffer, size_t respBufferSize) {
     TCPSocket socket;
 
     // Resolve the server's IP address and establish a connection
