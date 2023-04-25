@@ -25,7 +25,7 @@
 #define INFO(x, ...)
 #endif
 
-//BufferedSerial pc(USBTX, USBRX); //DEBUG ONLY BAD PRACTICE
+BufferedSerial pc(USBTX, USBRX); //DEBUG ONLY BAD PRACTICE
 
 WifiClient *WifiClient::_inst;
 
@@ -61,6 +61,17 @@ bool WifiClient::init() {
     return reset();
 }
 
+bool WifiClient::is_connected() {
+    return (strcmp(_ip, "nil") != 0);
+}
+
+void WifiClient::get_ip(char* ip){
+    printf("test: %s\n", _ip);
+    //ip = _ip;
+    memcpy(ip, _ip, 16);
+    printf("test2: %s\n", ip);
+}
+
 bool WifiClient::connect(const char *ssid, const char *phrase) {
     // Configure as station with passed ssid and passphrase
     printCMD(&_handle, 1s, "wifi.setmode(wifi.STATION)\r\n");
@@ -73,13 +84,10 @@ bool WifiClient::connect(const char *ssid, const char *phrase) {
     //keep checking for valid ip
     flushBuffer();
     while (timer.elapsed_time() < _timeout) {
-        memset(_recv, '\0', sizeof(_recv));
         printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
-        getreply(_recv);
-        //printf("%s\n", _recv); //DEBUG ONLY
-        if(strcmp(_recv, "nil") != 0){
-            memcpy(_ip, _recv, 16);
-            printf("%s\n", _ip);
+        getreply(_ip, 16);
+        //printf("%s\n", _ip); //DEBUG ONLY
+        if(strcmp(_ip, "nil") != 0){
             timer.stop();
             timer.reset();
             return 1;
@@ -97,32 +105,52 @@ bool WifiClient::disconnect() {
     timer.start();
     //make sure that wifi station has ip nil
     while (timer.elapsed_time() < _timeout) {
-        memset(_recv, '\0', sizeof(_recv));
+        memset(_ip, '\0', sizeof(_ip));
         printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
-        getreply(_recv);
-        //printf("%s\n", _recv); //DEBUG ONLY
-        if(strcmp(_recv, "nil") == 0){
-            memcpy(_ip, _recv, 3);
+        getreply(_ip,3);
+        //printf("%s\n", _ip); //DEBUG ONLY
+        if(strcmp(_ip, "nil") == 0){
             timer.stop();
             timer.reset();
             return 1;
         }
     }
+    printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
+    getreply(_ip,16);
     timer.stop();
     timer.reset();
     return 0;
 }
 
-bool WifiClient::is_connected() {
-    return (strcmp(_ip, "nil") != 0);
+int WifiClient::scan(char* aplist, int size){
+    printCMD(&_handle, 1s, "function listap(t)\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "for k,v in pairs(t) do\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "print(k)\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "end\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "end\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "wifi.sta.getap(listap)\r\n");
+    getreply(aplist, size);
+    return 1;
 }
 
-void WifiClient::get_ip(char* ip){
-    printf("test: %s\n", _ip);
-    //ip = _ip;
-    memcpy(ip, _ip, 16);
-    printf("test2: %s\n", ip);
+int WifiClient::http_get_request(const char* address, const char* payload, const char* header, char* respBuffer, size_t respBufferSize){
+    printCMD(&_handle, 1s, "sk=net.createConnection(net.TCP, 0)\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "sk:on(\"receive\", function(sck, c) print(c) end )\r\n");
+    flushBuffer();
+    printCMD(&_handle, 1s, "sk:connect(80,\"%s\")\r\n", address);
+    flushBuffer();
+    printCMD(&_handle, 1s, "sk:send(\"GET %s HTTP/1.1\\r\\nHost: %s\\r\\n%s\\r\\n\\r\\n\")\r\n", payload, address, header);
+    getreply_json(respBuffer, respBufferSize);
+    return 1;
 }
+
+
 
 int WifiClient::printCMD(Handle* handle, std::chrono::microseconds timeout, const char* fmt, ...){
     va_list args;
@@ -148,22 +176,23 @@ bool WifiClient::discardEcho(){
         //pc.write(&c, num); //debug
         if (c < 0)
             return false;
-        else if (c == '\r' || c == '>'){
+        else if (c == '>' || c =='\r'){
             _serial.read(&c, 1);
             return true;
         }
     }
 }
 
-void WifiClient::flushBuffer(){
+void WifiClient::flushBuffer(int len){
     Timer t;
     t.start();
-    int num;
+    int n = 0;
     char c;
-    while(t.elapsed_time() < 3s){
+    while(t.elapsed_time() < 1s && n!=len){
         if(_serial.readable()){
-            num = _serial.read(&c, 1);
-            //pc.write(_recv, num); //DEBUG ONLY
+            _serial.read(&c, 1);
+            n++;
+            //pc.write(&c, 1); //DEBUG ONLY
         }
     }
 }
@@ -171,21 +200,59 @@ void WifiClient::flushBuffer(){
 
 
 //todo: clean up
-int WifiClient::getreply(char* resp){
+int WifiClient::getreply(char* resp, int size){
     if(!discardEcho()){
         return false;
     }
     Timer t;
     t.start();
     char c;
-    int num = 0;
-    while(t.elapsed_time() < 1s){
+    int cnt = 0;
+    while(t.elapsed_time() < 3s){
         if(_serial.readable()){
-            num = _serial.read(&c, 1);
-            if(c == '\r')
-                break;
-            std::string resp1;
-            if(resp){strncat(resp, &c, 1);}
+            _serial.read(&c, 1);
+            //special case to filter
+            if(c == '>'){
+                flushBuffer(2);
+                continue;
+            }
+
+            if(resp){
+                strncat(resp, &c, 1);
+                cnt++;
+            }
+            if(cnt == size)break;
+            //pc.write(&c, num); //DEBUG ONLY
+        }
+    }
+    flushBuffer();
+    return 1;
+}
+
+int WifiClient::getreply_json(char* resp, int size){
+    if(!discardEcho()){
+        return false;
+    }
+    Timer t;
+    t.start();
+    char c;
+    int cnt = 0;
+    int fwd_brackets = 0;
+    while(t.elapsed_time() < 10s){
+        if(_serial.readable()){
+            _serial.read(&c, 1);
+            //special case to filter
+            if(c == '{'){
+                fwd_brackets++;
+            }else if(c=='}'){
+                fwd_brackets--;
+            }
+
+            if(resp && fwd_brackets>0){
+                strncat(resp, &c, 1);
+                cnt++;
+            }
+            if(cnt == size)break;
             //pc.write(&c, num); //DEBUG ONLY
         }
     }

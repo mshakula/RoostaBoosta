@@ -38,7 +38,7 @@ cmake -S <project_dir> -B <output_directory>
 cmake --build <output_directory> -t RoostaBoosta
 ```
 
-### Online Compiler / MBed Studio / Other compilers
+### Online Compiler / Mbed Studio / Other compilers
 
 We decided to use the Mbed CLI 2 / CMake as our main build tool since that seems to be the most actively supported solution for Mbed. Regardless, if another compilation solution is necessary, it may be possible to add add support with the following:
 
@@ -51,15 +51,6 @@ Add a `mbed-os.lib` file that points to the checked out revision of mbed-os.
 ```sh
 echo "https://github.com/ARMmbed/mbed-os.git#"$(cd third_party/mbed-os && git rev-parse HEAD) > mbed-os.lib
 ```
-
-<!-- Add a `.mbed` file.
-```sh
-cat <<EOT >> .mbed
-ROOT=.
-TARGET=LPC1768
-TARGET_CODE=1010
-EOT
-``` -->
 
 Note that this is not guaranteed to work if there are library conflicts and is not officially maintained.
 
@@ -89,3 +80,21 @@ Try to keep code legible and nice.
 
 A `.clang-format` is provided for all other formatting needs.
 Please keep all checked-in code formatted by it.
+
+## Hardware
+
+The hardware used in this project is based on the hardware provided by the Georgia Tech ECE department.
+
+Primary components used are:
+
+- [mBed LPC1768](https://os.mbed.com/platforms/mbed-LPC1768/)
+- [4D Systems uLCD-144-G2](https://www.sparkfun.com/products/11377)
+- [HC-SRO4 Ultrasonic Sensor](https://www.sparkfun.com/products/15569)
+- [Adafruit ESP8266 Breakout](https://www.adafruit.com/product/2471)
+- [SparkFun microSD Breakout](https://www.sparkfun.com/products/544)
+- [SparkFun RJ45 Ethernet Breakout](https://www.sparkfun.com/products/13021)
+- [SparkFun TPA2005D1 Amp](https://www.sparkfun.com/products/11044)
+
+Schematics and a breakout PCB are designed in [KiCAD](https://www.kicad.org/), which is free and open-source.
+
+The hardware setup is currently as bare-bones as possible to simplify manual wiring.

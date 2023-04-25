@@ -79,6 +79,16 @@ public:
     * @return true if successful
     */
     bool disconnect();
+
+    /**
+    * Scan all access points and put them in aplist (limited by size param)
+    * 
+    * @return true if successful
+    */
+    int scan(char* aplist, int size);
+
+    int http_get_request(const char* address, const char* payload, const char* header, char* respBuffer, size_t respBufferSize);
+
     /**
     * Reset the wifi module
     */
@@ -113,14 +123,16 @@ private:
     /**
     * Flushes BufferedSerial Buffer
     */
-    void flushBuffer();
+    void flushBuffer(int len = -1);
 
     /**
     * Gets reply from ESP8662
     * @param resp optional buffer to store response
     * @return 1 if successful
     */
-    int getreply(char* resp = 0);
+    int getreply(char* resp = 0, int size=0);
+    
+    int getreply_json(char* resp, int size);
 
     
 
@@ -133,10 +145,7 @@ protected:
     static WifiClient * _inst;
     // TODO WISHLIST: ipv6?
     // this requires nodemcu support
-    char _ip[16];
-
-    char _recv[1024];
-    
+    char _ip[16]; 
     int _baud;
     std::chrono::microseconds _timeout;
 };
