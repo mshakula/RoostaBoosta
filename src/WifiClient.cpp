@@ -25,7 +25,7 @@
 #define INFO(x, ...)
 #endif
 
-BufferedSerial pc(USBTX, USBRX); //DEBUG ONLY BAD PRACTICE
+//BufferedSerial pc(USBTX, USBRX); //DEBUG ONLY BAD PRACTICE
 
 WifiClient *WifiClient::_inst;
 
@@ -46,13 +46,15 @@ WifiClient::WifiClient(PinName tx, PinName rx, PinName reset, int baud, std::chr
 }
 
 bool WifiClient::reset() {
-    _reset_pin = 0;
-    wait_us(20);
-    _reset_pin = 1;
-    
+    if(_reset_pin.is_connected()){
+        _reset_pin = 0;
+        wait_us(20);
+        _reset_pin = 1;
+    }else{    
     // Send reboot command in case reset is not connected
     printCMD(&_handle, 1s, "node.restart()\r\n");
     flushBuffer();
+    }
     return true;
 }
 
@@ -66,10 +68,10 @@ bool WifiClient::is_connected() {
 }
 
 void WifiClient::get_ip(char* ip){
-    printf("test: %s\n", _ip);
+    //printf("test: %s\n", _ip);
     //ip = _ip;
     memcpy(ip, _ip, 16);
-    printf("test2: %s\n", ip);
+    //printf("test2: %s\n", ip);
 }
 
 bool WifiClient::connect(const char *ssid, const char *phrase) {
@@ -249,6 +251,37 @@ int WifiClient::getreply_json(char* resp, int size){
             }
 
             if(resp && fwd_brackets>0){
+                strncat(resp, &c, 1);
+                cnt++;
+            }
+            if(cnt == size)break;
+            //pc.write(&c, num); //DEBUG ONLY
+        }
+    }
+    flushBuffer();
+    return 1;
+}
+
+int WifiClient::getreply_xml(char* resp, int size){
+    if(!discardEcho()){
+        return false;
+    }
+    Timer t;
+    t.start();
+    char c;
+    int cnt = 0;
+    bool in_xml = false;
+    while(t.elapsed_time() < 10s){
+        if(_serial.readable()){
+            _serial.read(&c, 1);
+            //special case to filter
+            if(c == '<'){
+                in_xml=true;
+            }else if(c=='\r'){
+                in_xml=false;
+            }
+            
+            if(resp && in_xml){
                 strncat(resp, &c, 1);
                 cnt++;
             }

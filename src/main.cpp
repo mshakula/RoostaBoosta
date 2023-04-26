@@ -44,7 +44,7 @@ printdir()
 
 namespace{
 
-WifiClient wifi(p28, p27, p26);    
+WifiClient wifi(rb::pinout::kWifi_tx, rb::pinout::kWifi_rx, NC);
 char ssid[32] = "test";     // enter WiFi router ssid inside the quotes
 char pwd [32] = "test1234"; // enter WiFi router password inside the quotes
 const char* addr = "api.weatherapi.com";
