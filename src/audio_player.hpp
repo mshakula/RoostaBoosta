@@ -17,6 +17,10 @@
 extern "C" void
 play_audio(weather_data* data);
 
+/// \brief plays the alarm sound
+extern "C" void
+play_alarm();
+
 // ===================== Detail Implementation =======================
 
 #endif // AUDIO_PLAYER_H
