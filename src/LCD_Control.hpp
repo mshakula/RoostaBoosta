@@ -11,7 +11,7 @@
 #error "LCD_Control.hpp is a cxx-only header."
 #endif // __cplusplus
 
-#include "weather_data.h"
+#include "weather_data.hpp"
 
 // ======================= Public Interface ==========================
 

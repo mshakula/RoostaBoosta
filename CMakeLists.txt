@@ -40,8 +40,9 @@ file(GLOB sources CONFIGURE_DEPENDS src/*.cpp src/*.h)
 target_sources(RoostaBoosta PRIVATE ${sources})
 
 set_target_properties(
-  RoostaBoosta PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}"
-                          OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}")
+  RoostaBoosta
+  PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}-wifi"
+             OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}-wifi")
 
 # also have to enable in mbed_app.json
 target_link_libraries(

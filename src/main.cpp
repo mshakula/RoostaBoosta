@@ -9,8 +9,9 @@
 #include <string>
 #include <string_view>
 
+#include "WifiClient.hpp"
 #include <mbed.h>
-#include "WifiClient.h"
+#include <mbed_error.h>
 
 #include <FATFileSystem.h>
 #include <SDBlockDevice.h>
@@ -20,7 +21,9 @@
 #include "MusicPlayer.h"
 #include "audio_player.hpp"
 #include "pinout.hpp"
-#include "weather_data.h"
+#include "weather_data.hpp"
+
+using namespace rb;
 
 // ======================= Local Definitions =========================
 
@@ -40,96 +43,106 @@ printdir()
   return 0;
 }
 
-} // namespace
-
-namespace{
-
 WifiClient wifi(rb::pinout::kWifi_tx, rb::pinout::kWifi_rx, NC);
-char ssid[32] = "test";     // enter WiFi router ssid inside the quotes
-char pwd [32] = "test1234"; // enter WiFi router password inside the quotes
-const char* addr = "api.weatherapi.com";
-const char* payload = "/v1/forecast.json?key=a9e3fb6a760c49699d625304232504&q=Atlanta&aqi=no";
+char       ssid[32] = "test";    // enter WiFi router ssid inside the quotes
+char       pwd[32] = "test1234"; // enter WiFi router password inside the quotes
+const char* addr   = "api.weatherapi.com";
+const char* payload =
+  "/v1/forecast.json?key=a9e3fb6a760c49699d625304232504&q=Atlanta&aqi=no";
 const char* header = "Accept: application/xml";
 
-int 
+int
 startWifi()
 {
-    wifi.init();
-    //char ap_list[256];
-    //wifi.scan(ap_list, 256);
-    wifi.connect(ssid,pwd);
-    return 1;
+  wifi.init();
+  // char ap_list[256];
+  // wifi.scan(ap_list, 256);
+  wifi.connect(ssid, pwd);
+  return 1;
 }
 
 int
-searchChars(char* chars, const char* query, size_t chars_size, size_t query_size, int start_pos=0)
+extractJsonInt(std::string_view raw, std::string_view query)
 {
-    bool flag;
-    for(int i=start_pos; i<chars_size; i++)
-    {
-        flag=true;
-        for(int j=0; j<query_size; j++)
-        {
-            if(chars[i+j]!=query[j])
-            {
-                flag=false;
-                break;
-            } 
-        }
-        if(flag)return i;
-    }
-    return -1;
-}
+  constexpr auto npos = std::string_view::npos;
 
-int 
-extractJsonInt(char* raw, const char* query, size_t raw_size, size_t query_size)
-{
-    int ind = searchChars(raw, query, raw_size, query_size, 0) + query_size + 2;
-    return atoi(&raw[ind]);
+  auto query_index = raw.find(query, 0);
+  if (query_index == npos)
+    MBED_ERROR(MBED_ERROR_INVALID_DATA_DETECTED, "Query not found");
+  auto body_index = query_index + query.size() + 2;
+
+  return std::atoi(&raw[body_index]);
 }
 
 std::string
-extractJsonStr(char* raw, const char* query, size_t raw_size, size_t query_size){
-    int ind = searchChars(raw, query, raw_size, query_size, 0) + query_size + 3;
-    int len = searchChars(raw, "\"", raw_size, 1, ind) - ind;
-    return std::string(raw, ind, len);
+extractJsonStr(std::string_view raw, std::string_view query)
+{
+  constexpr auto npos = std::string_view::npos;
+
+  auto query_index = raw.find(query, 0);
+  if (query_index == npos)
+    MBED_ERROR(MBED_ERROR_INVALID_DATA_DETECTED, "Query not found");
+  auto body_index = query_index + query.size() + 3;
+  auto end_index  = raw.find("\"", body_index);
+
+  return std::string(&raw[body_index], end_index - body_index);
 }
 
 int
 updateweather(weather_data* data)
 {
-    char resp[2048];
-    memset(resp, '\0', sizeof(resp));
-    wifi.http_get_request(addr, payload, header, resp, 2048);
-    data->humidity             = extractJsonInt(resp, "humidity",             sizeof(resp), 8);
-    data->precipitation_chance = extractJsonInt(resp, "daily_chance_of_rain", sizeof(resp), 20);
-    data->temperature          = extractJsonInt(resp, "temp_f",               sizeof(resp), 6);
-    data->wind_speed           = extractJsonInt(resp, "wind_mph",             sizeof(resp), 8);
-    data->weather              = extractJsonStr(resp, "text",                 sizeof(resp), 4).c_str();
-    
-    return 1;
+  std::array<char, 2048> resp = {0};
+
+  debug("\r\n[updateweather] Getting request...");
+  wifi.http_get_request(addr, payload, header, resp.data(), resp.size());
+  debug(" done.");
+
+  debug("\r\n[updateweather] RESP DUNMP: %s\r\n============\r\n", resp.data());
+
+  debug("\r\n[updateweather] Parsing response...");
+  debug("\r\n\t humidity...");
+  data->humidity =
+    extractJsonInt(std::string_view{resp.data(), resp.size()}, "humidity");
+  debug("\r\n\t precip...");
+  data->precipitation_chance = extractJsonInt(
+    std::string_view{resp.data(), resp.size()}, "daily_chance_of_rain");
+  debug("\r\n\t temperature...");
+  data->temperature =
+    extractJsonInt(std::string_view{resp.data(), resp.size()}, "temp_f");
+  debug("\r\n\t wind_speed...");
+  data->wind_speed =
+    extractJsonInt(std::string_view{resp.data(), resp.size()}, "wind_mph");
+  debug("\r\n\t weather...");
+  data->weather =
+    extractJsonStr(std::string_view{resp.data(), resp.size()}, "text");
+  debug(" done.");
+
+  return 1;
 }
 
-} //namespace
+} // namespace
 
 // ====================== Global Definitions =========================
 int
 main()
 {
-  //wifi
-    printf("Starting demo...\n");
-    startWifi();
-    printf("Connected! Beginning HTTP get...\n");
-    weather_data* data = (weather_data*)malloc(sizeof(weather_data));
-    updateweather(data);
-    printf("Humidity: %d%\n",             data->humidity);
-    printf("Precipitation Chance: %d%\n", data->precipitation_chance);
-    printf("Temperature: %d degrees F\n", data->temperature);
-    printf("Wind Speed: %d mph\n",        data->wind_speed);
-    printf("Weather Description: %s\n",   data->weather);
-    printf("Finished.\n");
-    
-    
+  // wifi
+  printf("Starting demo...\n");
+  startWifi();
+  printf("Connected! Beginning HTTP get...\n");
+  weather_data  data_;
+  weather_data* data = &data_;
+  updateweather(data);
+
+  debug("\r\n\t[main] Weather Data: {");
+  debug("\r\n\tHumidity: %d%", data->humidity);
+  debug("\r\n\tPrecipitation Chance: %d%", data->precipitation_chance);
+  debug("\r\n\tTemperature: %d degrees F", data->temperature);
+  debug("\r\n\tWind Speed: %d mph", data->wind_speed);
+  debug("\r\n\tWeather Description: %s", data->weather.c_str());
+  debug("\r\n\tFinished.");
+  debug("\r\n}");
+
   debug("\r\n[main] Starting up.");
 
   debug("\r\n[main] Seeding rand...");

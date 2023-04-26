@@ -14,7 +14,7 @@
 #include <mbed.h>
 
 #include "MusicPlayer.h"
-#include "weather_data.h"
+#include "weather_data.hpp"
 
 // ======================= Local Definitions =========================
 
@@ -210,37 +210,37 @@ play_audio(weather_data* data)
   // read weather
   // only one allowed, if any condition is satified, return
   // if no sutable phrase, say nothing
-  if (strstr(data->weather, "thunder")) {
+  if (strstr(data->weather.c_str(), "thunder")) {
     play_file("weather/weather.pcm");
     play_file("weather/thunderstorms.pcm");
     return;
   }
 
-  if (strstr(data->weather, "rain")) {
+  if (strstr(data->weather.c_str(), "rain")) {
     play_file("weather/weather.pcm");
     play_file("weather/raining.pcm");
     return;
   }
 
-  if (strstr(data->weather, "snow")) {
+  if (strstr(data->weather.c_str(), "snow")) {
     play_file("weather/weather.pcm");
     play_file("weather/snowing.pcm");
     return;
   }
 
-  if (strstr(data->weather, "partly")) {
+  if (strstr(data->weather.c_str(), "partly")) {
     play_file("weather/weather.pcm");
     play_file("weather/partly_cloudy.pcm");
     return;
   }
 
-  if (strstr(data->weather, "cloud")) {
+  if (strstr(data->weather.c_str(), "cloud")) {
     play_file("weather/weather.pcm");
     play_file("weather/cloudy.pcm");
     return;
   }
 
-  if (strstr(data->weather, "sun")) {
+  if (strstr(data->weather.c_str(), "sun")) {
     play_file("weather/weather.pcm");
     play_file("weather/sunny.pcm");
     return;
