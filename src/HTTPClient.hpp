@@ -12,6 +12,12 @@
 #error "HTTPClient.hpp is a cxx-only header."
 #endif // __cplusplus
 
+// Disable global mbed namespace.
+#ifndef MBED_NO_GLOBAL_USING_DIRECTIVE
+#define MBED_NO_GLOBAL_USING_DIRECTIVE
+#define MBED_NO_GLOBAL_USING_DIRECTIVE_DEFINED__
+#endif // MBED_NO_GLOBAL_USING_DIRECTIVE
+
 #include <cstddef>
 #include <cstdint>
 
@@ -23,17 +29,11 @@
 #include <platform/Span.h>
 #include <rtos/EventFlags.h>
 
+#include "ErrorStatus.hpp"
+
 // ======================= Public Interface ==========================
 
 namespace rb {
-
-/// \brief Enum representing an error from the HTTP client.
-enum class HTTPError
-{
-  None = 0,
-  InvalidRequest,
-  Timeout
-};
 
 /// \brief Struct representing an HTTP status code. See [Status
 /// Code](https://tools.ietf.org/html/rfc2616#section-6.1.1)
@@ -91,7 +91,7 @@ class HTTPStatusCode
     USE_PROXY          = 305,
     TEMPORARY_REDIRECT = 307,
 
-    // 4xx Client Error
+    // 4xx Client ErrorStatus
     BAD_REQUEST                     = 400,
     UNAUTHORIZED                    = 401,
     PAYMENT_REQUIRED                = 402,
@@ -111,7 +111,7 @@ class HTTPStatusCode
     REQUESTED_RANGE_NOT_SATISFIABLE = 416,
     EXPECTATION_FAILED              = 417,
 
-    // 5xx Server Error
+    // 5xx Server ErrorStatus
     INTERNAL_SERVER_ERROR      = 500,
     NOT_IMPLEMENTED            = 501,
     BAD_GATEWAY                = 502,
@@ -222,7 +222,7 @@ struct HTTPRequestHeader
   bool eof() const;
 
   /// \brief Return if the request has failed to be read / the error code.
-  HTTPError fail() const;
+  ErrorStatus fail() const;
 
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
@@ -278,7 +278,7 @@ struct HTTPResponseHeader
   bool eof() const;
 
   /// \brief Return if the request has failed to be read / the error code.
-  HTTPError fail() const;
+  ErrorStatus fail() const;
 
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
@@ -334,7 +334,7 @@ struct HTTPGeneralHeader
   bool eof() const;
 
   /// \brief Return if the request has failed to be read / the error code.
-  HTTPError fail() const;
+  ErrorStatus fail() const;
 
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
@@ -392,7 +392,7 @@ struct HTTPEntityHeader
   bool eof() const;
 
   /// \brief Return if the request has failed to be read / the error code.
-  HTTPError fail() const;
+  ErrorStatus fail() const;
 
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
@@ -455,7 +455,7 @@ class HTTPRequest
   bool eof() const;
 
   /// \brief Return if the request has failed to be read / the error code.
-  HTTPError fail() const;
+  ErrorStatus fail() const;
 
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
@@ -488,6 +488,9 @@ class HTTPRequest
 
 /// \brief A structure containing an HTTP response payload.
 ///
+/// This structure is a reference to the data. It does not actually own
+/// anything.
+///
 /// \see [rfc2616e](https://tools.ietf.org/html/rfc2616#section-6) for standard
 /// specification.
 struct HTTPResponse
@@ -507,25 +510,101 @@ struct HTTPResponse
 };
 
 /// \brief A virtual interface for an HTTP/1.1 client.
+///
+/// Subclasses must implement the provided virtual functions to implement the
+/// HTTP Request function.
 class HTTPClient
 {
  public:
-  /// \brief Perform a generic HTTP request.
-  HTTPError Request(
+  /// \brief Default constructor.
+  HTTPClient() = default;
+
+  HTTPClient(const HTTPClient&)            = default;
+  HTTPClient& operator=(const HTTPClient&) = default;
+
+  /// \brief Virtual destructor for polymorphism.
+  virtual ~HTTPClient() = default;
+
+  /// \brief Perform a generic thread-blocking HTTP request.
+  ///
+  /// Currently, this is a blocking API, however it may be changed to be
+  /// non-blocking in the future... seems like not too hard with the current
+  /// implementation.
+  ///
+  /// \param request The request to send.
+  /// \param response The response object to read into.
+  /// \param timeout The timeout for the request.
+  /// \param data_callback The callback to call when body data is received. Will
+  /// be called in current thread. Can be used to implement parsing state
+  /// machine. If empty, the body will be discarded.
+  /// \param header_callback The callback to call when header data is received.
+  /// Will be called in current thread. Can be used to implement parsing state
+  /// machine. If empty, the header will be discarded. HTTPStatusCode will
+  /// always be set.
+  /// \param rcv_callback The callback to call when data is received. May be
+  /// called from ISR context. Usually, this should be left empty, and
+  /// data_callback / header_callback should be used instead. Only useful in the
+  /// case of unbuffered transports, where data must be caught in the ISR. In
+  /// the case of an mbed::BufferedSerial underlying transport, this is not
+  /// necessary. Useful if need to read data into buffer defined at Request
+  /// time, not Client creation time.
+  ///
+  /// \return Non-zero error code on failure.
+  ErrorStatus Request(
     const HTTPRequest&        request,
     HTTPResponse&             response,
-    std::chrono::microseconds timeout = std::chrono::microseconds{10'000},
-    mbed::Callback<HTTPError(mbed::Span<char>)> data_callback = {});
+    std::chrono::milliseconds timeout =
+      std::chrono::milliseconds{HTTP_CLIENT_DEFAULT_TIMEOUT},
+    mbed::Callback<ErrorStatus(HTTPResponse&)> data_callback   = {},
+    mbed::Callback<ErrorStatus(HTTPResponse&)> header_callback = {},
+    mbed::Callback<void()>                     rcv_callback    = {});
 
  protected:
-  virtual HTTPError sendRequest(const HTTPRequest& request) = 0;
+  /// \brief Send a request over the underlying transport. May be blocking.
+  ///
+  /// \param request The request to send.
+  ///
+  /// \return Non-zero error code on failure.
+  virtual ErrorStatus sendRequest(const HTTPRequest& request) = 0;
 
-  virtual HTTPError waitForResponse(std::chrono::microseconds timeout) = 0;
+  /// \brief Abort receive operation.
+  virtual void abort() = 0;
 
-  virtual HTTPError registerDataCallback(
-    mbed::Callback<HTTPError(mbed::Span<char>)> data_callback) = 0;
+  /// \brief Return the amount of available bytes to read.
+  virtual std::size_t available() const = 0;
 
-  rtos::EventFlags event_flags_;
+  /// \brief Read into buffer from the underlying transport.
+  ///
+  /// \param buffer The buffer to read into. Reads at most buffer.size() bytes.
+  ///
+  /// \return If no error, ret.value will be the number of bytes read.
+  virtual ErrorStatus read(mbed::Span<char> buffer) = 0;
+
+  /// \brief Read into buffer from the underlying transport.
+  ///
+  /// \see read(mbed::Span<char>, std::size_t&).
+  inline ErrorStatus read(char* buffer, std::size_t count)
+  {
+    return this->read(mbed::Span(buffer, count));
+  }
+
+  /// \brief Register callback to call whenever data is available. Can be called
+  /// multiple times.
+  ///
+  /// \param input_callback The callback to add. May run in ISR context.
+  ///
+  /// \return Non-zero error code on failure.
+  virtual ErrorStatus registerInputCallback(
+    mbed::Callback<void()> input_callback) = 0;
+
+  /// \brief Unregister callback to call whensever data is available.
+  ///
+  /// \see registerInputCallback(mbed::Callback<ErrorStatus(HTTPResponse&)>).
+  virtual void unregisterInputCallback() = 0;
+
+ private:
+  rtos::EventFlags event_flags_; // Event flags over cond variable for
+                                 // signalling from ISR.
 };
 
 } // namespace rb
@@ -656,7 +735,7 @@ HTTPStatusCode::reason() const
     case EXPECTATION_FAILED:
       return "Expectation Failed";
     case INTERNAL_SERVER_ERROR:
-      return "Internal Server Error";
+      return "Internal Server ErrorStatus";
     case NOT_IMPLEMENTED:
       return "Not Implemented";
     case BAD_GATEWAY:
@@ -668,7 +747,7 @@ HTTPStatusCode::reason() const
     case HTTP_VERSION_NOT_SUPPORTED:
       return "HTTP Version Not Supported";
     default:
-      return reason_phrase_;
+      return reason_phrase_.empty() ? "Unknown" : reason_phrase_;
   }
 }
 
@@ -884,5 +963,11 @@ HTTPEntityHeader::getField(std::string_view tag)
 #pragma endregion HTTPEntityHeader
 
 } // namespace rb
+
+// Undefine MBED_NO_GLOBAL_USING_DIRECTIVE if it was defined in this header.
+#ifdef MBED_NO_GLOBAL_USING_DIRECTIVE_DEFINED__
+#undef MBED_NO_GLOBAL_USING_DIRECTIVE
+#undef MBED_NO_GLOBAL_USING_DIRECTIVE_DEFINED__
+#endif // MBED_NO_GLOBAL_USING_DIRECTIVE_DEFINED__
 
 #endif // RB_HTTP_CLIENT_HPP

@@ -42,6 +42,11 @@
       "macro_name": "EVENT_FLAG_AUDIO_LOAD",
       "value": "0x1"
     },
+    "event_flag.network_packet": {
+      "help": "Event flag for network packet readable.",
+      "macro_name": "EVENT_FLAG_NETWORK_PACKET",
+      "value": "0x2"
+    },
     "MusicPlayer.audio_buf_bank_size": {
       "help": "Size of the audio buffer bank in samples (uint32_t). 1 << 9 == 512 seems to be the lower limit, after which it becomes crunchy again.",
       "macro_name": "MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE",
@@ -51,6 +56,11 @@
       "help": "Default PCM rate for the music player.",
       "macro_name": "MUSIC_PLAYER_DEFAULT_PCM_RATE",
       "value": "24000"
+    },
+    "HTTPClient.default_timeout": {
+      "help": "Default timeout for HTTPClient in milliseconds. 0 for no timeout.",
+      "macro_name": "HTTP_CLIENT_DEFAULT_TIMEOUT",
+      "value": "10000"
     }
   }
 }
