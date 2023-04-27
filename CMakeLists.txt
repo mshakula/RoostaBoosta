@@ -10,7 +10,7 @@ include(cmake/mbed-setup.cmake)
 
 project(
   RoostaBoosta
-  VERSION 0.0.4
+  VERSION 0.0.5
   DESCRIPTION
     "IoT Weather Alarm Clock - Georgia Tech ECE 4180 Spring 2023 Final Project"
   HOMEPAGE_URL https://github.com/mshakula/RoostaBoosta

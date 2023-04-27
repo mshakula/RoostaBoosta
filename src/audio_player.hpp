@@ -4,8 +4,8 @@
 ///
 /// \brief header fuctions to control the speaker
 
-#ifndef AUDIO_PLAYER_H
-#define AUDIO_PLAYER_H
+#ifndef AUDIO_PLAYER_HPP
+#define AUDIO_PLAYER_HPP
 
 #include "weather_data.hpp"
 
@@ -14,9 +14,13 @@
 /// \brief reads the weather data on the speaker
 ///
 /// \param data The weather data to print.
-extern "C" void
+void
 play_audio(weather_data* data);
+
+/// \brief plays the alarm sound
+void
+play_alarm();
 
 // ===================== Detail Implementation =======================
 
-#endif // AUDIO_PLAYER_H
+#endif // AUDIO_PLAYER_HPP

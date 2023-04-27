@@ -164,27 +164,27 @@ read_number(int number)
       play_file("numbers/nine.pcm");
       break;
     default:
-      // read 0
-      play_file("numbers/zero.pcm");
+      // read 0 iff exactly 0, avoids "nintey zero"
+      if (tens == 0)
+        play_file("numbers/zero.pcm");
       break;
   }
 }
 
-// play an alarm sound
-// separate function for usability
-//  void
-//  play_alarm()
-//  {
-//  	play_file("alarm.pcm");
-//  }
-
 } // namespace
 
 // ====================== Global Definitions =========================
+// play an alarm sound
+// separate function for usability
+void
+play_alarm()
+{
+  play_file("alarm.pcm");
+}
 
 // reads all weather data
 // param data the current weather conditons
-extern "C" void
+void
 play_audio(weather_data* data)
 {
   // read temperature
@@ -216,13 +216,17 @@ play_audio(weather_data* data)
     return;
   }
 
-  if (strstr(data->weather.c_str(), "rain")) {
+  if (
+    strstr(data->weather.c_str(), "rain") ||
+    strstr(data->weather.c_str(), "drizzle")) {
     play_file("weather/weather.pcm");
     play_file("weather/raining.pcm");
     return;
   }
 
-  if (strstr(data->weather.c_str(), "snow")) {
+  if (
+    strstr(data->weather.c_str(), "snow") ||
+    strstr(data->weather.c_str(), "sleet")) {
     play_file("weather/weather.pcm");
     play_file("weather/snowing.pcm");
     return;
@@ -234,7 +238,9 @@ play_audio(weather_data* data)
     return;
   }
 
-  if (strstr(data->weather.c_str(), "cloud")) {
+  if (
+    strstr(data->weather.c_str(), "cloud") ||
+    strstr(data->weather.c_str(), "over")) {
     play_file("weather/weather.pcm");
     play_file("weather/cloudy.pcm");
     return;
