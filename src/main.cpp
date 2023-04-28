@@ -8,7 +8,6 @@
 #include <array>
 #include <string>
 #include <string_view>
-#include <chrono>
 
 #include "WifiClient.hpp"
 #include <mbed.h>
@@ -126,13 +125,66 @@ updateweather(weather_data* data)
 // ====================== Global Definitions =========================
 int
 main()
-{ 
-  debug("\r\n[main] Running timepoint demo...");
+{
+  // wifi
+  printf("Starting demo...\n");
+  startWifi();
+  printf("Connected! Beginning HTTP get...\n");
+  weather_data  data_;
+  weather_data* data = &data_;
+  updateweather(data);
+
+  debug("\r\n\t[main] Weather Data: {");
+  debug("\r\n\tHumidity: %d%", data->humidity);
+  debug("\r\n\tPrecipitation Chance: %d%", data->precipitation_chance);
+  debug("\r\n\tTemperature: %d degrees F", data->temperature);
+  debug("\r\n\tWind Speed: %d mph", data->wind_speed);
+  debug("\r\n\tWeather Description: %s", data->weather.c_str());
+  debug("\r\n\tFinished.");
+  debug("\r\n}");
+
+  debug("\r\n[main] Starting up.");
+
+  debug("\r\n[main] Seeding rand...");
+  srand(time(NULL));
+  debug(" rand() = %d... done.", rand() % 100);
+
+  debug("\r\n[main] Initializing SD Block Device...");
+  SDBlockDevice sd(
+    rb::pinout::kSD_mosi,
+    rb::pinout::kSD_miso,
+    rb::pinout::kSD_sck,
+    rb::pinout::kSD_cs);
+  {
+    spi_capabilities_t caps;
+    spi_get_capabilities(rb::pinout::kSD_cs, true, &caps);
+    debug(" maxumum speed: %d...", caps.maximum_frequency);
+    sd.frequency(caps.maximum_frequency);
+  }
+  debug(" done.");
+
+  debug("\r\n[main] Mounting SD card...");
+  FATFileSystem fs(AUX_MOUNT_POINT, &sd);
+  debug(" done.");
+
+  debug("\r\n[main] Opening root file directory...");
+  if (printdir()) {
+    MBED_ERROR(
+      MBED_MAKE_ERROR(MBED_MODULE_FILESYSTEM, errno),
+      "Could not open root file directory.");
+  }
+  debug(" done.");
+
+  debug("\r\n[main] Running weather demo...");
 
   std::chrono::time_point<std::chrono::system_clock> time;
 
   while (true) {
+    ThisThread::sleep_for(1s);
     Display_Time(time);
     ThisThread::sleep_for(5s);
+    Display_Weather(data);
+    play_audio(data);
+    ThisThread::sleep_for(10s);
   }
 }
