@@ -8,6 +8,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <chrono>
 
 #include "WifiClient.hpp"
 #include <mbed.h>
@@ -176,9 +177,14 @@ main()
   debug(" done.");
 
   debug("\r\n[main] Running weather demo...");
+
+  std::chrono::time_point<std::chrono::system_clock> time;
+
   while (true) {
-    Display_Weather(data);
     ThisThread::sleep_for(1s);
+    Display_Time(time);
+    ThisThread::sleep_for(5s);
+    Display_Weather(data);
     play_audio(data);
     ThisThread::sleep_for(10s);
   }
