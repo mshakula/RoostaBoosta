@@ -8,6 +8,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <chrono>
 
 #include "WifiClient.hpp"
 #include <mbed.h>
