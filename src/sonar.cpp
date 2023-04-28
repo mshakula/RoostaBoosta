@@ -19,7 +19,7 @@ namespace {
 
 DigitalOut trigger(rb::pinout::kSonar_trig);
 DigitalIn  echo(rb::pinout::kSonar_echo);
-//Timer sonar;
+Timer sonar;
 
 } // namespace
 
@@ -29,38 +29,38 @@ DigitalIn  echo(rb::pinout::kSonar_echo);
 bool
 Is_Snoozed()
 {
-	// sonar.reset();
+	sonar.reset();
 
-	// sonar.start();
-	// // min software polling delay to read echo pin
-	// while (echo==2) {};
-	// sonar.stop();
-	// int correction = sonar.elapsed_time().count();
-	// debug("\r\n\t[Sonar] Approximate software overhead timer delay is %d uS",correction);
+	sonar.start();
+	// min software polling delay to read echo pin
+	while (echo==2) {};
+	sonar.stop();
+	int correction = sonar.elapsed_time().count();
+	debug("\r\n\t[Sonar] Approximate software overhead timer delay is %d uS",correction);
 
-	// // trigger sonar to send a ping
-	// trigger = 1;
- //    sonar.reset();
- //    ThisThread::sleep_for(5ms);
- //    trigger = 0;
- //    //wait for echo high
- //    while (echo==0) {};
- //    //echo high, so start timer
- //    sonar.start();
- //    //wait for echo low
- //    while (echo==1) {};
- //    //stop timer and read value
- //    sonar.stop();
- //    //subtract software overhead timer delay and scale to cm
- //    int distance = (sonar.elapsed_time().count() - correction) / 58.0;
- //    debug("\r\n\t[Sonar] distance:  %d cm",distance);
+	// trigger sonar to send a ping
+	trigger = 1;
+    sonar.reset();
+    ThisThread::sleep_for(5ms);
+    trigger = 0;
+    //wait for echo high
+    while (echo==0) {};
+    //echo high, so start timer
+    sonar.start();
+    //wait for echo low
+    while (echo==1) {};
+    //stop timer and read value
+    sonar.stop();
+    //subtract software overhead timer delay and scale to cm
+    int distance = (sonar.elapsed_time().count() - correction) / 58.0;
+    debug("\r\n\t[Sonar] distance:  %d cm",distance);
 
- //    //wait a little bit
- //    ThisThread::sleep_for(200ms);
+    //wait a little bit
+    ThisThread::sleep_for(200ms);
 
- //    //check distance
- //    if(distance <= 10) {
- //    	return true;
- //    }
+    //check distance
+    if(distance <= 10) {
+    	return true;
+    }
     return false;
 }

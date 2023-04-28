@@ -16,7 +16,7 @@
 /// \brief returns true if something within 10cm of sonar
 ///
 bool
-Is_Snoozed()
+Is_Snoozed();
 
 // ===================== Detail Implementation =======================
 
