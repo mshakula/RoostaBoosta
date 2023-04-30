@@ -34,7 +34,7 @@ struct ErrorStatus
   constexpr ErrorStatus(
     mbed_error_code_t  code_    = static_cast<mbed_error_code_t>(MBED_SUCCESS),
     const char*        message_ = NULL,
-    unsigned int       value_   = 0,
+    int                value_   = 0,
     mbed_module_type_t module_  = MBED_MODULE_APPLICATION,
     mbed_error_type_t  type_    = MBED_ERROR_TYPE_CUSTOM) :
       status{MAKE_MBED_ERROR(type_, module_, code_)},
@@ -46,7 +46,7 @@ struct ErrorStatus
   constexpr ErrorStatus(
     mbed_error_status_t status_,
     const char*         message_ = NULL,
-    unsigned int        value_   = 0) :
+    int                 value_   = 0) :
       status{status_},
       message{message_},
       value{value_}

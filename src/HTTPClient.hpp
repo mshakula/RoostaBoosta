@@ -83,60 +83,6 @@ class HTTPSerializationHandle
   operator bool() const = delete;
 };
 
-/// \brief Common base for HTTPSerializationHandles to reduce boilerplate.
-template<class T>
-struct HTTPSerializationHandleBase
-{
-  HTTPSerializationHandleBase(const T& obj) : obj_{obj}, err_{} {}
-  HTTPSerializationHandleBase(const HTTPSerializationHandleBase&) = default;
-  HTTPSerializationHandleBase& operator=(const HTTPSerializationHandleBase&) =
-    default;
-
-  ErrorStatus fail() const { return err_; }
-
-  const T&    obj_;
-  ErrorStatus err_;
-};
-
-/// \brief Specialization for std::string_view.
-///
-/// \see HTTPSerializationHandle
-template<>
-class HTTPSerializationHandle<std::string_view> :
-    private HTTPSerializationHandleBase<std::string_view>
-{
- public:
-  HTTPSerializationHandle(const std::string_view& obj) :
-      HTTPSerializationHandleBase{obj},
-      idx_{0}
-  {
-  }
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    std::size_t bytes_to_copy = std::min(buffer.size(), obj_.size() - idx_);
-    if (bytes_to_copy <= 0) {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-      return *this;
-    }
-    std::copy_n(obj_.data() + idx_, bytes_to_copy, buffer.begin());
-    idx_ += bytes_to_copy;
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return idx_ >= obj_.size(); }
-
-  operator bool() const { !eof() && !fail(); }
-
- private:
-  std::size_t idx_;
-};
-
 /// \brief Helper to reduce boilerplate code for serialization.
 template<class T>
 struct HTTPSerializationBase
@@ -150,18 +96,12 @@ struct HTTPSerializationBase
   /// \brief Serialize the object into a buffer.
   ///
   /// \see HTTPSerializationHandle::serialize
-  HTTPSerializationHandle<T> serialize(mbed::Span<char> buffer) const
-  {
-    return get_serialization_handle().serialize(buffer);
-  }
+  HTTPSerializationHandle<T> serialize(mbed::Span<char> buffer) const;
 
   /// \brief Serialize the object into a buffer.
   ///
   /// \see HTTPSerializationBase::serialize(mbed::Span<char>)
-  HTTPSerializationHandle<T> serialize(char* buf, std::size_t size) const
-  {
-    return serialize(mbed::Span<char>{buf, size});
-  }
+  HTTPSerializationHandle<T> serialize(char* buf, std::size_t size) const;
 };
 
 /// \brief Struct representing an HTTP status code. See [Status
@@ -380,7 +320,7 @@ struct HTTPResponseHeader : public HTTPSerializationBase<HTTPResponseHeader>
 
 /// \brief A structure containing an HTTP
 /// [general-header](https://tools.ietf.org/html/rfc2616#section-4.5).
-struct HTTPGeneralHeader : public HTTPSerializationHandle<HTTPGeneralHeader>
+struct HTTPGeneralHeader : public HTTPSerializationBase<HTTPGeneralHeader>
 {
   std::string_view cache_control;
   std::string_view connection;
@@ -430,28 +370,6 @@ struct HTTPEntityHeader : public HTTPSerializationBase<HTTPEntityHeader>
   /// \brief Reset the output stream to the beginning. Clears any error / eof
   /// flags.
   void reset() const;
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// Can be called multiple times to write the request in chunks without.
-  /// Characters are extracted and stored until any of the following conditions
-  /// occurs:
-  /// - buffer.size() characters were extracted and stored.
-  /// - The end of the request is reached, in which case eof() is set to true.
-  /// - An error occurs, in which case fail() is set, and can be read.
-  ///
-  /// \param buffer The buffer to write to.
-  ///
-  /// \return The current request.
-  HTTPEntityHeader& read(mbed::Span<char> buffer);
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// \see read(mbed::Span<char>).
-  HTTPEntityHeader& read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
 };
 
 /// \brief A structure containing an HTTP request payload.
@@ -606,7 +524,7 @@ namespace rb {
 constexpr HTTPStatusCode::HTTPStatusCode(
   int              code,
   std::string_view reason_phrase) :
-    code_(code),
+    code_(static_cast<decltype(code_)>(code)),
     reason_phrase_(reason_phrase)
 {
 }
@@ -723,7 +641,7 @@ HTTPStatusCode::reason() const
     case EXPECTATION_FAILED:
       return "Expectation Failed";
     case INTERNAL_SERVER_ERROR:
-      return "Internal Server ErrorStatus";
+      return "Internal Server Error";
     case NOT_IMPLEMENTED:
       return "Not Implemented";
     case BAD_GATEWAY:
@@ -738,55 +656,6 @@ HTTPStatusCode::reason() const
       return reason_phrase_.empty() ? "Unknown" : reason_phrase_;
   }
 }
-
-template<>
-class HTTPSerializationHandle<HTTPStatusCode> :
-    private HTTPSerializationHandleBase<HTTPStatusCode>
-{
- public:
-  HTTPSerializationHandle(const HTTPStatusCode& obj) :
-      HTTPSerializationHandleBase{obj},
-      idx_{0},
-      req_{0},
-      code_buffer_{0}
-  {
-    req_ = std::snprintf(code_buffer_.data(), code_buffer_.size(), "%d", obj_);
-    if (req_ >= code_buffer_.size())
-      RB_ERROR(ErrorStatus{
-        MBED_ERROR_CODE_ASSERTION_FAILED,
-        "Failed to pre-serialize HTTPStatusCode. Required buffer size too "
-        "large.",
-        req_});
-  }
-
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    if (idx_ >= req_) {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-      return *this;
-    }
-
-    auto to_write = std::min(req_ - idx_, buffer.size());
-    std::memcpy(buffer.data(), code_buffer_.data() + idx_, to_write);
-    idx_ += to_write;
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return idx_ == req_; }
-
-  operator bool() const { return !fail() && !eof(); }
-
- private:
-  std::size_t         idx_;
-  std::size_t         req_;
-  std::array<char, 6> code_buffer_;
-};
 
 #pragma endregion HTTPStatusCode
 #pragma region    HTTPMethod
@@ -829,9 +698,6 @@ constexpr HTTPMethod::HTTPMethod(std::string_view method) :
       code_ = TRACE;
     }
   }
-
-  static_assert(HTTPMethod("get").method() == "GET");
-  static_assert(HTTPMethod("pUt").method() == "PUT");
 }
 
 constexpr std::string_view
@@ -861,16 +727,8 @@ HTTPMethod::method() const
   }
 }
 
-template<>
-class HTTPSerializationHandle<HTTPMethod> :
-    public HTTPSerializationHandle<std::string_view>
-{
- public:
-  HTTPSerializationHandle(const HTTPMethod& obj) :
-      HTTPSerializationHandle<std::string_view>{obj.method()},
-  {
-  }
-};
+static_assert(HTTPMethod("get").method() == "GET");
+static_assert(HTTPMethod("pUt").method() == "PUT");
 
 #pragma endregion HTTPMethod
 #pragma region    HTTPRequestHeader
@@ -920,143 +778,6 @@ HTTPRequestHeader::getField(std::string_view tag)
     return nullptr;
 }
 
-template<>
-class HTTPSerializationHandle<HTTPRequestHeader> :
-    public HTTPSerializationHandleBase<HTTPRequestHeader>
-{
-  using namespace std::literals::string_view_literals;
-
- public:
-  HTTPSerializationHandle(const HTTPRequestHeader& obj) :
-      HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
-      child_idx_{0}
-  {
-  }
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  const auto& get_field(std::size_t idx) const
-  {
-    switch (idx) {
-      case 0:
-        return "Accept"sv;
-      case 1:
-        return this->obj_.accept;
-      case 2:
-        return "Accept-Charset"sv;
-      case 3:
-        return this->obj_.accept_charset;
-      case 4:
-        return "Accept-Encoding"sv;
-      case 5:
-        return this->obj_.accept_encoding;
-      case 6:
-        return "Accept-Language"sv;
-      case 7:
-        return this->obj_.accept_language;
-      case 8:
-        return "Authorization"sv;
-      case 9:
-        return this->obj_.authorization;
-      case 10:
-        return "Expect"sv;
-      case 11:
-        return this->obj_.expect;
-      case 12:
-        return "From"sv;
-      case 13:
-        return this->obj_.from;
-      case 14:
-        return "Host"sv;
-      case 15:
-        return this->obj_.host;
-      case 16:
-        return "If-Match"sv;
-      case 17:
-        return this->obj_.if_match;
-      case 18:
-        return "If-Modified-Since"sv;
-      case 19:
-        return this->obj_.if_modified_since;
-      case 20:
-        return "If-None-Match"sv;
-      case 21:
-        return this->obj_.if_none_match;
-      case 22:
-        return "If-Range"sv;
-      case 23:
-        return this->obj_.if_range;
-      case 24:
-        return "If-Unmodified-Since"sv;
-      case 25:
-        return this->obj_.if_unmodified_since;
-      case 26:
-        return "Max-Forwards"sv;
-      case 27:
-        return this->obj_.max_forwards;
-      case 28:
-        return "Proxy-Authorization"sv;
-      case 29:
-        return this->obj_.proxy_authorization;
-      case 30:
-        return "Range"sv;
-      case 31:
-        return this->obj_.range;
-      case 32:
-        return "Referer"sv;
-      case 33:
-        return this->obj_.referer;
-      case 34:
-        return "TE"sv;
-      case 35:
-        return this->obj_.te;
-      case 36:
-        return "User-Agent"sv;
-      case 37:
-        return this->obj_.user_agent;
-      default:
-        return ""sv;
-    }
-  }
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    auto f = [this]() {
-      if (!child_handle_.serialize(buffer)) {
-        if ((err_ = child_handle_.fail())) {
-          return true; // error condition -- stop.
-        } else {
-          return false; // eof condition -- continue.
-        }
-      }
-      return true; // wrote maximum bytes -- stop.
-    };
-
-    if (child_idx_ <= 37) {
-      while (child_idx <= 37) {
-        if (f())
-          return *this;
-        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-    }
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return child_idx_ > 37; }
-
-  operator bool() const { return !fail() && !eof(); }
-
- private:
-  HTTPSerializationHandle<std::string_view> child_handle_;
-  std::size_t                               child_idx_;
-};
-
 #pragma endregion HTTPRequestHeader
 #pragma region    HTTPResponseHeader
 
@@ -1085,101 +806,6 @@ HTTPResponseHeader::getField(std::string_view tag)
     return nullptr;
 }
 
-template<>
-class HTTPSerializationHandle<HTTPResponseHeader> :
-    public HTTPSerializationHandleBase<HTTPResponseHeader>
-{
- public:
-  HTTPSerializationHandle(const HTTPResponseHeader& obj) :
-      HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
-      child_idx_{0}
-  {
-  }
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  const auto& get_field(std::size_t idx) const
-  {
-    switch (idx) {
-      case 0:
-        return "Accept-Ranges"sv;
-      case 1:
-        return this->obj_.accept_ranges;
-      case 2:
-        return "Age"sv;
-      case 3:
-        return this->obj_.age;
-      case 4:
-        return "ETag"sv;
-      case 5:
-        return this->obj_.etag;
-      case 6:
-        return "Location"sv;
-      case 7:
-        return this->obj_.location;
-      case 8:
-        return "Proxy-Authenticate"sv;
-      case 9:
-        return this->obj_.proxy_authenticate;
-      case 10:
-        return "Retry-After"sv;
-      case 11:
-        return this->obj_.retry_after;
-      case 12:
-        return "Server"sv;
-      case 13:
-        return this->obj_.server;
-      case 14:
-        return "Vary"sv;
-      case 15:
-        return this->obj_.vary;
-      case 16:
-        return "WWW-Authenticate"sv;
-      case 17:
-        return this->obj_.www_authenticate;
-      default:
-        return ""sv;
-    }
-  }
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    auto f = [this]() {
-      if (!child_handle_.serialize(buffer)) {
-        if ((err_ = child_handle_.fail())) {
-          return true; // error condition -- stop.
-        } else {
-          return false; // eof condition -- continue.
-        }
-      }
-      return true; // wrote maximum bytes -- stop.
-    };
-
-    if (child_idx_ <= 17) {
-      while (child_idx <= 17) {
-        if (f())
-          return *this;
-        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-    }
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return child_idx_ > 17; }
-
-  operator bool() const { return !fail() && !eof(); }
-
- private:
-  HTTPSerializationHandle<std::string_view> child_handle_;
-  std::size_t                               child_idx_;
-};
-
 #pragma endregion HTTPResponseHeader
 #pragma region    HTTPGeneralHeader
 
@@ -1206,101 +832,6 @@ HTTPGeneralHeader::getField(std::string_view tag)
     return &warning;
   return nullptr;
 }
-
-template<>
-class HTTPSerializationHandle<HTTPGeneralHeader> :
-    public HTTPSerializationHandleBase<HTTPGeneralHeader>
-{
- public:
-  HTTPSerializationHandle(const HTTPGeneralHeader& obj) :
-      HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
-      child_idx_{0}
-  {
-  }
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  const auto& get_field(std::size_t idx) const
-  {
-    switch (idx) {
-      case 0:
-        return "Cache-Control"sv;
-      case 1:
-        return this->obj_.cache_control;
-      case 2:
-        return "Connection"sv;
-      case 3:
-        return this->obj_.connection;
-      case 4:
-        return "Date"sv;
-      case 5:
-        return this->obj_.date;
-      case 6:
-        return "Pragma"sv;
-      case 7:
-        return this->obj_.pragma;
-      case 8:
-        return "Trailer"sv;
-      case 9:
-        return this->obj_.trailer;
-      case 10:
-        return "Transfer-Encoding"sv;
-      case 11:
-        return this->obj_.transfer_encoding;
-      case 12:
-        return "Upgrade"sv;
-      case 13:
-        return this->obj_.upgrade;
-      case 14:
-        return "Via"sv;
-      case 15:
-        return this->obj_.via;
-      case 16:
-        return "Warning"sv;
-      case 17:
-        return this->obj_.warning;
-      default:
-        return ""sv;
-    }
-  }
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    auto f = [this]() {
-      if (!child_handle_.serialize(buffer)) {
-        if ((err_ = child_handle_.fail())) {
-          return true; // error condition -- stop.
-        } else {
-          return false; // eof condition -- continue.
-        }
-      }
-      return true; // wrote maximum bytes -- stop.
-    };
-
-    if (child_idx_ <= 17) {
-      while (child_idx <= 17) {
-        if (f())
-          return *this;
-        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-    }
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return child_idx_ > 17; }
-
-  operator bool() const { return !fail() && !eof(); }
-
- private:
-  HTTPSerializationHandle<std::string_view> child_handle_;
-  std::size_t                               child_idx_;
-};
 
 #pragma endregion HTTPGeneralHeader
 #pragma region    HTTPEntityHeader
@@ -1333,108 +864,25 @@ HTTPEntityHeader::getField(std::string_view tag)
   }
 }
 
-template<>
-class HTTPSerializationHandle<HTTPEntityHeader> :
-    public HTTPSerializationHandleBase<HTTPEntityHeader>
-{
- public:
-  HTTPSerializationHandle(const HTTPEntityHeader& obj) :
-      HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
-      child_idx_{0}
-  {
-  }
-  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
-  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
-  const auto& get_field(std::size_t idx) const
-  {
-    switch (idx) {
-      case 0:
-        return "Allow"sv;
-      case 1:
-        return this->obj_.allow;
-      case 2:
-        return "Content-Encoding"sv;
-      case 3:
-        return this->obj_.content_encoding;
-      case 4:
-        return "Content-Language"sv;
-      case 5:
-        return this->obj_.content_language;
-      case 6:
-        return "Content-Length"sv;
-      case 7:
-        return this->obj_.content_length;
-      case 8:
-        return "Content-Location"sv;
-      case 9:
-        return this->obj_.content_location;
-      case 10:
-        return "Content-MD5"sv;
-      case 11:
-        return this->obj_.content_md5;
-      case 12:
-        return "Content-Range"sv;
-      case 13:
-        return this->obj_.content_range;
-      case 14:
-        return "Content-Type"sv;
-      case 15:
-        return this->obj_.content_type;
-      case 16:
-        return "Expires"sv;
-      case 17:
-        return this->obj_.expires;
-      case 18:
-        return "Last-Modified"sv;
-      case 19:
-        return this->obj_.last_modified;
-      case 20:
-        return this->obj_.extension_header;
-      default:
-        return ""sv;
-    }
-  }
-
-  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
-  {
-    auto f = [this]() {
-      if (!child_handle_.serialize(buffer)) {
-        if ((err_ = child_handle_.fail())) {
-          return true; // error condition -- stop.
-        } else {
-          return false; // eof condition -- continue.
-        }
-      }
-      return true; // wrote maximum bytes -- stop.
-    };
-
-    if (child_idx_ <= 20) {
-      while (child_idx <= 20) {
-        if (f())
-          return *this;
-        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-    }
-    return *this;
-  }
-
-  void reset() { *this = HTTPSerializationHandle{obj_}; }
-
-  bool eof() const { return child_idx_ > 20; }
-
-  operator bool() const { return !fail() && !eof(); }
-
- private:
-  HTTPSerializationHandle<std::string_view> child_handle_;
-  std::size_t                               child_idx_;
-};
-
 #pragma endregion HTTPEntityHeader
+
+// explicitly specialize serialization handles before defining SerializationBase
+// functions.
+#include "HTTPSerializationHandle.ipp"
+
+template<class T>
+HTTPSerializationHandle<T>
+HTTPSerializationBase<T>::serialize(mbed::Span<char> buffer) const
+{
+  return get_serialization_handle().serialize(buffer);
+}
+
+template<class T>
+HTTPSerializationHandle<T>
+HTTPSerializationBase<T>::serialize(char* buf, std::size_t size) const
+{
+  return serialize(mbed::Span<char>{buf, size});
+}
 
 } // namespace rb
 
