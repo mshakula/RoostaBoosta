@@ -155,8 +155,7 @@ template<>
 class HTTPSerializationHandle<HTTPRequestHeader> :
     public HTTPSerializationHandleBase<HTTPRequestHeader>
 {
- public:
-  std::string_view get_field(std::size_t idx) const
+  std::string_view getField_(std::size_t idx) const
   {
     switch (idx) {
       case 0:
@@ -240,9 +239,10 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
     }
   }
 
+ public:
   HTTPSerializationHandle(const HTTPRequestHeader& obj) :
       HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
+      child_handle_{getField_(0)},
       child_idx_{0}
   {
   }
@@ -251,6 +251,14 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
 
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    if (eof()) {
+      err_ = ErrorStatus(
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        child_idx_);
+      return *this;
+    }
+
     auto f = [this, &buffer]() {
       if (!child_handle_.serialize(buffer)) {
         if ((err_ = child_handle_.fail())) {
@@ -262,18 +270,11 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
       return true; // wrote maximum bytes -- stop.
     };
 
-    if (child_idx_ <= 37) {
-      while (child_idx_ <= 37) {
-        if (f())
-          return *this;
-        child_handle_ =
-          HTTPSerializationHandle<std::string_view>{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus(
-        MBED_ERROR_CODE_ENODATA,
-        "Serialization has already completed.",
-        child_idx_);
+    while (child_idx_ <= 37) {
+      if (f())
+        return *this;
+      child_handle_ =
+        HTTPSerializationHandle<std::string_view>{getField_(++child_idx_)};
     }
     return *this;
   }
@@ -293,8 +294,7 @@ template<>
 class HTTPSerializationHandle<HTTPResponseHeader> :
     public HTTPSerializationHandleBase<HTTPResponseHeader>
 {
- public:
-  std::string_view get_field(std::size_t idx) const
+  std::string_view getField_(std::size_t idx) const
   {
     switch (idx) {
       case 0:
@@ -338,9 +338,10 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
     }
   }
 
+ public:
   HTTPSerializationHandle(const HTTPResponseHeader& obj) :
       HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
+      child_handle_{getField_(0)},
       child_idx_{0}
   {
   }
@@ -349,6 +350,14 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
 
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    if (eof()) {
+      err_ = ErrorStatus(
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        child_idx_);
+      return *this;
+    }
+
     auto f = [this, &buffer]() {
       if (!child_handle_.serialize(buffer)) {
         if ((err_ = child_handle_.fail())) {
@@ -360,18 +369,11 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
       return true; // wrote maximum bytes -- stop.
     };
 
-    if (child_idx_ <= 17) {
-      while (child_idx_ <= 17) {
-        if (f())
-          return *this;
-        child_handle_ =
-          HTTPSerializationHandle<std::string_view>{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus(
-        MBED_ERROR_CODE_ENODATA,
-        "Serialization has already completed.",
-        child_idx_);
+    while (child_idx_ <= 17) {
+      if (f())
+        return *this;
+      child_handle_ =
+        HTTPSerializationHandle<std::string_view>{getField_(++child_idx_)};
     }
     return *this;
   }
@@ -391,8 +393,7 @@ template<>
 class HTTPSerializationHandle<HTTPGeneralHeader> :
     public HTTPSerializationHandleBase<HTTPGeneralHeader>
 {
- public:
-  std::string_view get_field(std::size_t idx) const
+  std::string_view getField_(std::size_t idx) const
   {
     switch (idx) {
       case 0:
@@ -436,9 +437,10 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
     }
   }
 
+ public:
   HTTPSerializationHandle(const HTTPGeneralHeader& obj) :
       HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
+      child_handle_{getField_(0)},
       child_idx_{0}
   {
   }
@@ -447,6 +449,14 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
 
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    if (eof()) {
+      err_ = ErrorStatus(
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        child_idx_);
+      return *this;
+    }
+
     auto f = [this, &buffer]() {
       if (!child_handle_.serialize(buffer)) {
         if ((err_ = child_handle_.fail())) {
@@ -458,18 +468,11 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
       return true; // wrote maximum bytes -- stop.
     };
 
-    if (child_idx_ <= 17) {
-      while (child_idx_ <= 17) {
-        if (f())
-          return *this;
-        child_handle_ =
-          HTTPSerializationHandle<std::string_view>{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus(
-        MBED_ERROR_CODE_ENODATA,
-        "Serialization has already completed.",
-        child_idx_);
+    while (child_idx_ <= 17) {
+      if (f())
+        return *this;
+      child_handle_ =
+        HTTPSerializationHandle<std::string_view>{getField_(++child_idx_)};
     }
     return *this;
   }
@@ -489,8 +492,7 @@ template<>
 class HTTPSerializationHandle<HTTPEntityHeader> :
     public HTTPSerializationHandleBase<HTTPEntityHeader>
 {
- public:
-  std::string_view get_field(std::size_t idx) const
+  std::string_view getField_(std::size_t idx) const
   {
     switch (idx) {
       case 0:
@@ -540,9 +542,10 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
     }
   }
 
+ public:
   HTTPSerializationHandle(const HTTPEntityHeader& obj) :
       HTTPSerializationHandleBase{obj},
-      child_handle_{get_field(0)},
+      child_handle_{getField_(0)},
       child_idx_{0}
   {
   }
@@ -551,6 +554,14 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
 
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    if (eof()) {
+      err_ = ErrorStatus(
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        child_idx_);
+      return *this;
+    }
+
     auto f = [this, &buffer]() {
       if (!child_handle_.serialize(buffer)) {
         if ((err_ = child_handle_.fail())) {
@@ -562,18 +573,11 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
       return true; // wrote maximum bytes -- stop.
     };
 
-    if (child_idx_ <= 20) {
-      while (child_idx_ <= 20) {
-        if (f())
-          return *this;
-        child_handle_ =
-          HTTPSerializationHandle<std::string_view>{get_field(++child_idx_)};
-      }
-    } else {
-      err_ = ErrorStatus(
-        MBED_ERROR_CODE_ENODATA,
-        "Serialization has already completed.",
-        child_idx_);
+    while (child_idx_ <= 20) {
+      if (f())
+        return *this;
+      child_handle_ =
+        HTTPSerializationHandle<std::string_view>{getField_(++child_idx_)};
     }
     return *this;
   }
@@ -587,6 +591,104 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
  private:
   HTTPSerializationHandle<std::string_view> child_handle_;
   std::size_t                               child_idx_;
+};
+
+template<>
+class HTTPSerializationHandle<HTTPRequest> :
+    public HTTPSerializationHandleBase<HTTPRequest>
+{
+  HTTPSerializationHandle(const HTTPRequest& obj) :
+      HTTPSerializationHandleBase{obj},
+      child_idx_{0},
+      child_handle_{HTTPSerializationHandle<decltype(obj_.method)>(obj_.method)}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle& o) :
+      HTTPSerializationHandleBase{o.obj_},
+      child_idx_{o.child_idx_},
+      child_handle_{o.child_handle_}
+  {
+  }
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    if (eof()) {
+      err_ = ErrorStatus(
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        child_idx_);
+      return *this;
+    }
+
+    auto f = [this, &buffer](auto& field) {
+      if (!field.serialize(buffer)) {
+        if ((err_ = field.fail())) {
+          return true; // error condition -- stop.
+        } else {
+          return false; // eof condition -- continue.
+        }
+      }
+      return true; // wrote maximum bytes -- stop.
+    };
+
+#ifdef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
+#error "RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD already defined."
+#endif
+#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(field_id, next_field)   \
+  case field_id:                                                             \
+    if (f(std::get<field_id>(child_handle_))) {                              \
+      return *this;                                                          \
+    }                                                                        \
+    child_handle_.emplace<field_id + 1>(                                     \
+      HTTPSerializationHandle<                                               \
+        std::remove_const_t<std::remove_reference_t<decltype(next_field)>>>( \
+        next_field));                                                        \
+    ++child_idx_;
+
+    switch (child_idx_) {
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(0, obj_.SP);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(1, obj_.uri);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(2, obj_.SP);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(3, obj_.version);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(4, obj_.CRLF);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(5, obj_.general_header);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(6, obj_.request_header);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(7, obj_.entity_header);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(8, obj_.CRLF);
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(9, obj_.message_body);
+      case 10:
+        if (f(std::get<10>(child_handle_))) {
+          return *this;
+        }
+        ++child_idx_;
+    }
+
+    return *this;
+#undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return child_idx_ > 10; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  std::size_t child_idx_;
+  std::variant<
+    HTTPSerializationHandle<HTTPMethod>,
+    HTTPSerializationHandle<std::string_view>,  // space
+    HTTPSerializationHandle<std::string_view>,  // uri
+    HTTPSerializationHandle<std::string_view>,  // space
+    HTTPSerializationHandle<std::string_view>,  // version
+    HTTPSerializationHandle<std::string_view>,  // crlf
+    HTTPSerializationHandle<HTTPGeneralHeader>, // general-header
+    HTTPSerializationHandle<HTTPRequestHeader>, // request-header
+    HTTPSerializationHandle<HTTPEntityHeader>,  // entity-header
+    HTTPSerializationHandle<std::string_view>,  // crlf
+    HTTPSerializationHandle<std::string_view>>  // body
+    child_handle_;
 };
 
 #endif // RB_HTTP_SERIALIZATION_HANDLE_IPP

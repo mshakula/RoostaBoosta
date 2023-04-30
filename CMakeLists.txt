@@ -44,7 +44,9 @@ set_target_properties(
   PROPERTIES ARTIFACT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}-networking"
              OUTPUT_NAME "RoostaBoosta-${CMAKE_PROJECT_VERSION}-networking")
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  target_compile_options(RoostaBoosta PUBLIC "-Wno-unknown-pragmas")
+  target_compile_options(
+    RoostaBoosta PUBLIC "-Wno-unknown-pragmas"
+                        $<$<COMPILE_LANGUAGE:CXX>:-Wno-register>)
 endif()
 
 # also have to enable in mbed_app.json

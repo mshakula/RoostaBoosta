@@ -87,6 +87,11 @@ class HTTPSerializationHandle
 template<class T>
 struct HTTPSerializationBase
 {
+  static constexpr std::basic_string_view<char, std::char_traits<char>> CRLF =
+    "\r\n";
+  static constexpr std::basic_string_view<char, std::char_traits<char>> SP =
+    " ";
+
   /// \brief Return a new serialization handle for this object.
   HTTPSerializationHandle<T> get_serialization_handle() const
   {
@@ -381,12 +386,13 @@ struct HTTPEntityHeader : public HTTPSerializationBase<HTTPEntityHeader>
 /// specification.
 struct HTTPRequest : public HTTPSerializationBase<HTTPRequest>
 {
-  HTTPMethod        method;
-  std::string_view  uri;
-  HTTPGeneralHeader general_header;
-  HTTPRequestHeader request_header;
-  HTTPEntityHeader  entity_header;
-  std::string_view  message_body;
+  HTTPMethod                        method;
+  std::string_view                  uri;
+  static constexpr std::string_view version = "HTTP/1.1";
+  HTTPGeneralHeader                 general_header;
+  HTTPRequestHeader                 request_header;
+  HTTPEntityHeader                  entity_header;
+  std::string_view                  message_body;
 
   constexpr HTTPRequest() = default;
 
