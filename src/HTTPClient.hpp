@@ -21,9 +21,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
-#include <span>
+#include <limits>
 #include <string_view>
+#include <variant>
 
 #include <platform/Callback.h>
 #include <platform/Span.h>
@@ -35,10 +38,138 @@
 
 namespace rb {
 
+/// \brief Helper handle that allows for serialization of a type T.
+///
+/// In order to actually use, class T should implement it in its entirety.
+/// Contains a status of the serialization.
+///
+/// A serialization handle should be considered ephemeral and should not be
+/// relied on to always be updated.
+template<class T>
+class HTTPSerializationHandle
+{
+  friend T;
+
+ public:
+  HTTPSerializationHandle(const T& obj) = delete;
+
+  /// \brief Serialize the object into the buffer.
+  ///
+  /// Can be called multiple times to write the request in chunks without.
+  /// Characters are extracted and stored until any of the following conditions
+  /// occurs:
+  /// - buffer.size() characters were extracted and stored.
+  /// - The end of the request is reached, in which case eof() is set to true.
+  /// - An error occurs, in which case fail() is set, and can be read.
+  ///
+  /// \param buffer The buffer to write to.
+  ///
+  /// \return The current serialization handle.
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer) = delete;
+
+  /// \brief Reset the serialization handle to beginning of stream.
+  void reset() = delete;
+
+  /// \brief Return true if the serialization handle is at the end of stream.
+  bool eof() const = delete;
+
+  /// \brief Return last error status.
+  ///
+  /// Common errors:
+  /// - MBED_ERROR_CODE_ENODATA: Serialization has already completed.
+  ErrorStatus fail() const = delete;
+
+  /// \brief Return true if the serialization handle can still be read from.
+  operator bool() const = delete;
+};
+
+/// \brief Common base for HTTPSerializationHandles to reduce boilerplate.
+template<class T>
+struct HTTPSerializationHandleBase
+{
+  HTTPSerializationHandleBase(const T& obj) : obj_{obj}, err_{} {}
+  HTTPSerializationHandleBase(const HTTPSerializationHandleBase&) = default;
+  HTTPSerializationHandleBase& operator=(const HTTPSerializationHandleBase&) =
+    default;
+
+  ErrorStatus fail() const { return err_; }
+
+  const T&    obj_;
+  ErrorStatus err_;
+};
+
+/// \brief Specialization for std::string_view.
+///
+/// \see HTTPSerializationHandle
+template<>
+class HTTPSerializationHandle<std::string_view> :
+    private HTTPSerializationHandleBase<std::string_view>
+{
+ public:
+  HTTPSerializationHandle(const std::string_view& obj) :
+      HTTPSerializationHandleBase{obj},
+      idx_{0}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    std::size_t bytes_to_copy = std::min(buffer.size(), obj_.size() - idx_);
+    if (bytes_to_copy <= 0) {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+      return *this;
+    }
+    std::copy_n(obj_.data() + idx_, bytes_to_copy, buffer.begin());
+    idx_ += bytes_to_copy;
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return idx_ >= obj_.size(); }
+
+  operator bool() const { !eof() && !fail(); }
+
+ private:
+  std::size_t idx_;
+};
+
+/// \brief Helper to reduce boilerplate code for serialization.
+template<class T>
+struct HTTPSerializationBase
+{
+  /// \brief Return a new serialization handle for this object.
+  HTTPSerializationHandle<T> get_serialization_handle() const
+  {
+    return HTTPSerializationHandle{*static_cast<T*>(this)};
+  }
+
+  /// \brief Serialize the object into a buffer.
+  ///
+  /// \see HTTPSerializationHandle::serialize
+  HTTPSerializationHandle<T> serialize(mbed::Span<char> buffer) const
+  {
+    return get_serialization_handle().serialize(buffer);
+  }
+
+  /// \brief Serialize the object into a buffer.
+  ///
+  /// \see HTTPSerializationBase::serialize(mbed::Span<char>)
+  HTTPSerializationHandle<T> serialize(char* buf, std::size_t size) const
+  {
+    return serialize(mbed::Span<char>{buf, size});
+  }
+};
+
 /// \brief Struct representing an HTTP status code. See [Status
 /// Code](https://tools.ietf.org/html/rfc2616#section-6.1.1)
-class HTTPStatusCode
+class HTTPStatusCode : public HTTPSerializationBase<HTTPStatusCode>
 {
+  friend class HTTPSerializationHandle<HTTPStatusCode>;
+
   static constexpr std::string_view kDefaultReasonPhrase = "Unknown";
 
  public:
@@ -63,6 +194,9 @@ class HTTPStatusCode
 
   /// \brief Return the reason string for this request.
   constexpr std::string_view reason() const;
+
+  /// \brief Return the code for this request
+  constexpr int code() const { return code_; }
 
   /// \brief Anonymous enum containing all standard HTTP status codes.
   enum
@@ -121,14 +255,16 @@ class HTTPStatusCode
   };
 
  private:
-  int              code_;
-  std::string_view reason_phrase_;
+  decltype(INVALID_) code_;
+  std::string_view   reason_phrase_;
 };
 
 /// \brief A structure containing an HTTP request method, detailed in
 /// [Method](https://tools.ietf.org/html/rfc2616#section-5.1.1)
-class HTTPMethod
+class HTTPMethod : public HTTPSerializationBase<HTTPMethod>
 {
+  friend class HTTPSerializationHandle<HTTPStatusCode>;
+
  public:
   /// \brief Construct an HTTPMethod from a case-insensitive method string.
   constexpr HTTPMethod(std::string_view method = "");
@@ -143,7 +279,7 @@ class HTTPMethod
   constexpr bool valid() const { return code_ != INVALID_; }
   constexpr      operator bool() const { return valid(); }
 
- private:
+  /// \brief Anonymous enum containing all standard HTTP methods.
   enum
   {
     INVALID_,
@@ -183,15 +319,17 @@ class HTTPMethod
 
     /// \brief Some other method not listed above.
     EXTENSION_METHOD
-  } code_;
-  std::string_view method_;
+  };
+
+ private:
+  decltype(EXTENSION_METHOD) code_;
+  std::string_view           method_;
 };
 
 /// \brief A structure containing an HTTP
 /// [request-header](https://tools.ietf.org/html/rfc2616#section-5.3),
-struct HTTPRequestHeader
+struct HTTPRequestHeader : public HTTPSerializationBase<HTTPRequestHeader>
 {
- public:
   std::string_view accept;
   std::string_view accept_charset;
   std::string_view accept_encoding;
@@ -217,47 +355,12 @@ struct HTTPRequestHeader
   ///
   /// \param tag The header field to match.
   constexpr std::string_view* getField(std::string_view tag);
-
-  /// \brief return if the request has been fully read.
-  bool eof() const;
-
-  /// \brief Return if the request has failed to be read / the error code.
-  ErrorStatus fail() const;
-
-  /// \brief Reset the output stream to the beginning. Clears any error / eof
-  /// flags.
-  void reset() const;
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// Can be called multiple times to write the request in chunks without.
-  /// Characters are extracted and stored until any of the following conditions
-  /// occurs:
-  /// - buffer.size() characters were extracted and stored.
-  /// - The end of the request is reached, in which case eof() is set to true.
-  /// - An error occurs, in which case fail() is set, and can be read.
-  ///
-  /// \param buffer The buffer to write to.
-  ///
-  /// \return The current request.
-  HTTPRequestHeader& read(mbed::Span<char> buffer);
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// \see read(mbed::Span<char>).
-  HTTPRequestHeader& read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
-
- private:
 };
 
 /// \brief A structure containing an HTTP
 /// [response-header](https://tools.ietf.org/html/rfc2616#section-6.2),
-struct HTTPResponseHeader
+struct HTTPResponseHeader : public HTTPSerializationBase<HTTPResponseHeader>
 {
- public:
   std::string_view accept_ranges;
   std::string_view age;
   std::string_view etag;
@@ -273,47 +376,12 @@ struct HTTPResponseHeader
   ///
   /// \param tag The header field to match.
   constexpr std::string_view* getField(std::string_view tag);
-
-  /// \brief return if the request has been fully read.
-  bool eof() const;
-
-  /// \brief Return if the request has failed to be read / the error code.
-  ErrorStatus fail() const;
-
-  /// \brief Reset the output stream to the beginning. Clears any error / eof
-  /// flags.
-  void reset() const;
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// Can be called multiple times to write the request in chunks without.
-  /// Characters are extracted and stored until any of the following conditions
-  /// occurs:
-  /// - buffer.size() characters were extracted and stored.
-  /// - The end of the request is reached, in which case eof() is set to true.
-  /// - An error occurs, in which case fail() is set, and can be read.
-  ///
-  /// \param buffer The buffer to write to.
-  ///
-  /// \return The current request.
-  HTTPResponseHeader& read(mbed::Span<char> buffer);
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// \see read(mbed::Span<char>).
-  HTTPResponseHeader& read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
-
- private:
 };
 
 /// \brief A structure containing an HTTP
 /// [general-header](https://tools.ietf.org/html/rfc2616#section-4.5).
-struct HTTPGeneralHeader
+struct HTTPGeneralHeader : public HTTPSerializationHandle<HTTPGeneralHeader>
 {
- public:
   std::string_view cache_control;
   std::string_view connection;
   std::string_view date;
@@ -329,47 +397,12 @@ struct HTTPGeneralHeader
   ///
   /// \param tag The header field to match.
   constexpr std::string_view* getField(std::string_view tag);
-
-  /// \brief return if the request has been fully read.
-  bool eof() const;
-
-  /// \brief Return if the request has failed to be read / the error code.
-  ErrorStatus fail() const;
-
-  /// \brief Reset the output stream to the beginning. Clears any error / eof
-  /// flags.
-  void reset() const;
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// Can be called multiple times to write the request in chunks without.
-  /// Characters are extracted and stored until any of the following conditions
-  /// occurs:
-  /// - buffer.size() characters were extracted and stored.
-  /// - The end of the request is reached, in which case eof() is set to true.
-  /// - An error occurs, in which case fail() is set, and can be read.
-  ///
-  /// \param buffer The buffer to write to.
-  ///
-  /// \return The current request.
-  HTTPGeneralHeader& read(mbed::Span<char> buffer);
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// \see read(mbed::Span<char>).
-  HTTPGeneralHeader& read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
-
- private:
 };
 
 /// \brief A structure containing an HTTP
 /// [request-header](https://tools.ietf.org/html/rfc2616#section-7.1).
-struct HTTPEntityHeader
+struct HTTPEntityHeader : public HTTPSerializationBase<HTTPEntityHeader>
 {
- public:
   std::string_view allow;
   std::string_view content_encoding;
   std::string_view content_language;
@@ -419,8 +452,6 @@ struct HTTPEntityHeader
   {
     return this->read(mbed::Span(buffer, count));
   }
-
- private:
 };
 
 /// \brief A structure containing an HTTP request payload.
@@ -430,9 +461,8 @@ struct HTTPEntityHeader
 ///
 /// \see [rfc2616e](https://tools.ietf.org/html/rfc2616#section-5) for standard
 /// specification.
-class HTTPRequest
+struct HTTPRequest : public HTTPSerializationBase<HTTPRequest>
 {
- public:
   HTTPMethod        method;
   std::string_view  uri;
   HTTPGeneralHeader general_header;
@@ -440,7 +470,6 @@ class HTTPRequest
   HTTPEntityHeader  entity_header;
   std::string_view  message_body;
 
- public:
   constexpr HTTPRequest() = default;
 
   constexpr HTTPRequest(const HTTPRequest&)            = default;
@@ -450,40 +479,6 @@ class HTTPRequest
   /// \brief Return if the request format is valid.
   bool   valid() const;
   inline operator bool() const { return valid(); }
-
-  /// \brief return if the request has been fully read.
-  bool eof() const;
-
-  /// \brief Return if the request has failed to be read / the error code.
-  ErrorStatus fail() const;
-
-  /// \brief Reset the output stream to the beginning. Clears any error / eof
-  /// flags.
-  void reset() const;
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// Can be called multiple times to write the request in chunks without.
-  /// Characters are extracted and stored until any of the following conditions
-  /// occurs:
-  /// - buffer.size() characters were extracted and stored.
-  /// - The end of the request is reached, in which case eof() is set to true.
-  /// - An error occurs, in which case fail() is set, and can be read.
-  ///
-  /// \param buffer The buffer to write to.
-  ///
-  /// \return The current request.
-  HTTPRequest& read(mbed::Span<char> buffer);
-
-  /// \brief Read the request into a buffer.
-  ///
-  /// \see read(mbed::Span<char>).
-  HTTPRequest& read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
-
- private:
 };
 
 /// \brief A structure containing an HTTP response payload.
@@ -493,8 +488,10 @@ class HTTPRequest
 ///
 /// \see [rfc2616e](https://tools.ietf.org/html/rfc2616#section-6) for standard
 /// specification.
-struct HTTPResponse
+class HTTPResponse
 {
+  friend class HTTPClient;
+
  public:
   HTTPStatusCode     status_code;
   HTTPGeneralHeader  general_header;
@@ -507,6 +504,10 @@ struct HTTPResponse
   constexpr HTTPResponse(const HTTPResponse&)            = default;
   constexpr HTTPResponse& operator=(const HTTPResponse&) = default;
   ~HTTPResponse()                                        = default;
+
+ private:
+  rtos::EventFlags event_flags_; // Event flags over cond variable for
+                                 // signalling from ISR.
 };
 
 /// \brief A virtual interface for an HTTP/1.1 client.
@@ -534,13 +535,6 @@ class HTTPClient
   /// \param request The request to send.
   /// \param response The response object to read into.
   /// \param timeout The timeout for the request.
-  /// \param data_callback The callback to call when body data is received. Will
-  /// be called in current thread. Can be used to implement parsing state
-  /// machine. If empty, the body will be discarded.
-  /// \param header_callback The callback to call when header data is received.
-  /// Will be called in current thread. Can be used to implement parsing state
-  /// machine. If empty, the header will be discarded. HTTPStatusCode will
-  /// always be set.
   /// \param rcv_callback The callback to call when data is received. May be
   /// called from ISR context. Usually, this should be left empty, and
   /// data_callback / header_callback should be used instead. Only useful in the
@@ -555,9 +549,7 @@ class HTTPClient
     HTTPResponse&             response,
     std::chrono::milliseconds timeout =
       std::chrono::milliseconds{HTTP_CLIENT_DEFAULT_TIMEOUT},
-    mbed::Callback<ErrorStatus(HTTPResponse&)> data_callback   = {},
-    mbed::Callback<ErrorStatus(HTTPResponse&)> header_callback = {},
-    mbed::Callback<void()>                     rcv_callback    = {});
+    mbed::Callback<void()> rcv_callback = {});
 
  protected:
   /// \brief Send a request over the underlying transport. May be blocking.
@@ -601,10 +593,6 @@ class HTTPClient
   ///
   /// \see registerInputCallback(mbed::Callback<ErrorStatus(HTTPResponse&)>).
   virtual void unregisterInputCallback() = 0;
-
- private:
-  rtos::EventFlags event_flags_; // Event flags over cond variable for
-                                 // signalling from ISR.
 };
 
 } // namespace rb
@@ -751,6 +739,55 @@ HTTPStatusCode::reason() const
   }
 }
 
+template<>
+class HTTPSerializationHandle<HTTPStatusCode> :
+    private HTTPSerializationHandleBase<HTTPStatusCode>
+{
+ public:
+  HTTPSerializationHandle(const HTTPStatusCode& obj) :
+      HTTPSerializationHandleBase{obj},
+      idx_{0},
+      req_{0},
+      code_buffer_{0}
+  {
+    req_ = std::snprintf(code_buffer_.data(), code_buffer_.size(), "%d", obj_);
+    if (req_ >= code_buffer_.size())
+      RB_ERROR(ErrorStatus{
+        MBED_ERROR_CODE_ASSERTION_FAILED,
+        "Failed to pre-serialize HTTPStatusCode. Required buffer size too "
+        "large.",
+        req_});
+  }
+
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    if (idx_ >= req_) {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+      return *this;
+    }
+
+    auto to_write = std::min(req_ - idx_, buffer.size());
+    std::memcpy(buffer.data(), code_buffer_.data() + idx_, to_write);
+    idx_ += to_write;
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return idx_ == req_; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  std::size_t         idx_;
+  std::size_t         req_;
+  std::array<char, 6> code_buffer_;
+};
+
 #pragma endregion HTTPStatusCode
 #pragma region    HTTPMethod
 
@@ -792,6 +829,9 @@ constexpr HTTPMethod::HTTPMethod(std::string_view method) :
       code_ = TRACE;
     }
   }
+
+  static_assert(HTTPMethod("get").method() == "GET");
+  static_assert(HTTPMethod("pUt").method() == "PUT");
 }
 
 constexpr std::string_view
@@ -821,10 +861,16 @@ HTTPMethod::method() const
   }
 }
 
-#ifndef NDEBUG
-static_assert(HTTPMethod("get").method() == "GET");
-static_assert(HTTPMethod("pUt").method() == "PUT");
-#endif // NDEBUG
+template<>
+class HTTPSerializationHandle<HTTPMethod> :
+    public HTTPSerializationHandle<std::string_view>
+{
+ public:
+  HTTPSerializationHandle(const HTTPMethod& obj) :
+      HTTPSerializationHandle<std::string_view>{obj.method()},
+  {
+  }
+};
 
 #pragma endregion HTTPMethod
 #pragma region    HTTPRequestHeader
@@ -874,6 +920,143 @@ HTTPRequestHeader::getField(std::string_view tag)
     return nullptr;
 }
 
+template<>
+class HTTPSerializationHandle<HTTPRequestHeader> :
+    public HTTPSerializationHandleBase<HTTPRequestHeader>
+{
+  using namespace std::literals::string_view_literals;
+
+ public:
+  HTTPSerializationHandle(const HTTPRequestHeader& obj) :
+      HTTPSerializationHandleBase{obj},
+      child_handle_{get_field(0)},
+      child_idx_{0}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  const auto& get_field(std::size_t idx) const
+  {
+    switch (idx) {
+      case 0:
+        return "Accept"sv;
+      case 1:
+        return this->obj_.accept;
+      case 2:
+        return "Accept-Charset"sv;
+      case 3:
+        return this->obj_.accept_charset;
+      case 4:
+        return "Accept-Encoding"sv;
+      case 5:
+        return this->obj_.accept_encoding;
+      case 6:
+        return "Accept-Language"sv;
+      case 7:
+        return this->obj_.accept_language;
+      case 8:
+        return "Authorization"sv;
+      case 9:
+        return this->obj_.authorization;
+      case 10:
+        return "Expect"sv;
+      case 11:
+        return this->obj_.expect;
+      case 12:
+        return "From"sv;
+      case 13:
+        return this->obj_.from;
+      case 14:
+        return "Host"sv;
+      case 15:
+        return this->obj_.host;
+      case 16:
+        return "If-Match"sv;
+      case 17:
+        return this->obj_.if_match;
+      case 18:
+        return "If-Modified-Since"sv;
+      case 19:
+        return this->obj_.if_modified_since;
+      case 20:
+        return "If-None-Match"sv;
+      case 21:
+        return this->obj_.if_none_match;
+      case 22:
+        return "If-Range"sv;
+      case 23:
+        return this->obj_.if_range;
+      case 24:
+        return "If-Unmodified-Since"sv;
+      case 25:
+        return this->obj_.if_unmodified_since;
+      case 26:
+        return "Max-Forwards"sv;
+      case 27:
+        return this->obj_.max_forwards;
+      case 28:
+        return "Proxy-Authorization"sv;
+      case 29:
+        return this->obj_.proxy_authorization;
+      case 30:
+        return "Range"sv;
+      case 31:
+        return this->obj_.range;
+      case 32:
+        return "Referer"sv;
+      case 33:
+        return this->obj_.referer;
+      case 34:
+        return "TE"sv;
+      case 35:
+        return this->obj_.te;
+      case 36:
+        return "User-Agent"sv;
+      case 37:
+        return this->obj_.user_agent;
+      default:
+        return ""sv;
+    }
+  }
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    auto f = [this]() {
+      if (!child_handle_.serialize(buffer)) {
+        if ((err_ = child_handle_.fail())) {
+          return true; // error condition -- stop.
+        } else {
+          return false; // eof condition -- continue.
+        }
+      }
+      return true; // wrote maximum bytes -- stop.
+    };
+
+    if (child_idx_ <= 37) {
+      while (child_idx <= 37) {
+        if (f())
+          return *this;
+        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
+      }
+    } else {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+    }
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return child_idx_ > 37; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  HTTPSerializationHandle<std::string_view> child_handle_;
+  std::size_t                               child_idx_;
+};
+
 #pragma endregion HTTPRequestHeader
 #pragma region    HTTPResponseHeader
 
@@ -902,6 +1085,101 @@ HTTPResponseHeader::getField(std::string_view tag)
     return nullptr;
 }
 
+template<>
+class HTTPSerializationHandle<HTTPResponseHeader> :
+    public HTTPSerializationHandleBase<HTTPResponseHeader>
+{
+ public:
+  HTTPSerializationHandle(const HTTPResponseHeader& obj) :
+      HTTPSerializationHandleBase{obj},
+      child_handle_{get_field(0)},
+      child_idx_{0}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  const auto& get_field(std::size_t idx) const
+  {
+    switch (idx) {
+      case 0:
+        return "Accept-Ranges"sv;
+      case 1:
+        return this->obj_.accept_ranges;
+      case 2:
+        return "Age"sv;
+      case 3:
+        return this->obj_.age;
+      case 4:
+        return "ETag"sv;
+      case 5:
+        return this->obj_.etag;
+      case 6:
+        return "Location"sv;
+      case 7:
+        return this->obj_.location;
+      case 8:
+        return "Proxy-Authenticate"sv;
+      case 9:
+        return this->obj_.proxy_authenticate;
+      case 10:
+        return "Retry-After"sv;
+      case 11:
+        return this->obj_.retry_after;
+      case 12:
+        return "Server"sv;
+      case 13:
+        return this->obj_.server;
+      case 14:
+        return "Vary"sv;
+      case 15:
+        return this->obj_.vary;
+      case 16:
+        return "WWW-Authenticate"sv;
+      case 17:
+        return this->obj_.www_authenticate;
+      default:
+        return ""sv;
+    }
+  }
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    auto f = [this]() {
+      if (!child_handle_.serialize(buffer)) {
+        if ((err_ = child_handle_.fail())) {
+          return true; // error condition -- stop.
+        } else {
+          return false; // eof condition -- continue.
+        }
+      }
+      return true; // wrote maximum bytes -- stop.
+    };
+
+    if (child_idx_ <= 17) {
+      while (child_idx <= 17) {
+        if (f())
+          return *this;
+        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
+      }
+    } else {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+    }
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return child_idx_ > 17; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  HTTPSerializationHandle<std::string_view> child_handle_;
+  std::size_t                               child_idx_;
+};
+
 #pragma endregion HTTPResponseHeader
 #pragma region    HTTPGeneralHeader
 
@@ -928,6 +1206,101 @@ HTTPGeneralHeader::getField(std::string_view tag)
     return &warning;
   return nullptr;
 }
+
+template<>
+class HTTPSerializationHandle<HTTPGeneralHeader> :
+    public HTTPSerializationHandleBase<HTTPGeneralHeader>
+{
+ public:
+  HTTPSerializationHandle(const HTTPGeneralHeader& obj) :
+      HTTPSerializationHandleBase{obj},
+      child_handle_{get_field(0)},
+      child_idx_{0}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  const auto& get_field(std::size_t idx) const
+  {
+    switch (idx) {
+      case 0:
+        return "Cache-Control"sv;
+      case 1:
+        return this->obj_.cache_control;
+      case 2:
+        return "Connection"sv;
+      case 3:
+        return this->obj_.connection;
+      case 4:
+        return "Date"sv;
+      case 5:
+        return this->obj_.date;
+      case 6:
+        return "Pragma"sv;
+      case 7:
+        return this->obj_.pragma;
+      case 8:
+        return "Trailer"sv;
+      case 9:
+        return this->obj_.trailer;
+      case 10:
+        return "Transfer-Encoding"sv;
+      case 11:
+        return this->obj_.transfer_encoding;
+      case 12:
+        return "Upgrade"sv;
+      case 13:
+        return this->obj_.upgrade;
+      case 14:
+        return "Via"sv;
+      case 15:
+        return this->obj_.via;
+      case 16:
+        return "Warning"sv;
+      case 17:
+        return this->obj_.warning;
+      default:
+        return ""sv;
+    }
+  }
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    auto f = [this]() {
+      if (!child_handle_.serialize(buffer)) {
+        if ((err_ = child_handle_.fail())) {
+          return true; // error condition -- stop.
+        } else {
+          return false; // eof condition -- continue.
+        }
+      }
+      return true; // wrote maximum bytes -- stop.
+    };
+
+    if (child_idx_ <= 17) {
+      while (child_idx <= 17) {
+        if (f())
+          return *this;
+        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
+      }
+    } else {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+    }
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return child_idx_ > 17; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  HTTPSerializationHandle<std::string_view> child_handle_;
+  std::size_t                               child_idx_;
+};
 
 #pragma endregion HTTPGeneralHeader
 #pragma region    HTTPEntityHeader
@@ -959,6 +1332,107 @@ HTTPEntityHeader::getField(std::string_view tag)
     return nullptr;
   }
 }
+
+template<>
+class HTTPSerializationHandle<HTTPEntityHeader> :
+    public HTTPSerializationHandleBase<HTTPEntityHeader>
+{
+ public:
+  HTTPSerializationHandle(const HTTPEntityHeader& obj) :
+      HTTPSerializationHandleBase{obj},
+      child_handle_{get_field(0)},
+      child_idx_{0}
+  {
+  }
+  HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
+  HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
+
+  const auto& get_field(std::size_t idx) const
+  {
+    switch (idx) {
+      case 0:
+        return "Allow"sv;
+      case 1:
+        return this->obj_.allow;
+      case 2:
+        return "Content-Encoding"sv;
+      case 3:
+        return this->obj_.content_encoding;
+      case 4:
+        return "Content-Language"sv;
+      case 5:
+        return this->obj_.content_language;
+      case 6:
+        return "Content-Length"sv;
+      case 7:
+        return this->obj_.content_length;
+      case 8:
+        return "Content-Location"sv;
+      case 9:
+        return this->obj_.content_location;
+      case 10:
+        return "Content-MD5"sv;
+      case 11:
+        return this->obj_.content_md5;
+      case 12:
+        return "Content-Range"sv;
+      case 13:
+        return this->obj_.content_range;
+      case 14:
+        return "Content-Type"sv;
+      case 15:
+        return this->obj_.content_type;
+      case 16:
+        return "Expires"sv;
+      case 17:
+        return this->obj_.expires;
+      case 18:
+        return "Last-Modified"sv;
+      case 19:
+        return this->obj_.last_modified;
+      case 20:
+        return this->obj_.extension_header;
+      default:
+        return ""sv;
+    }
+  }
+
+  HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
+  {
+    auto f = [this]() {
+      if (!child_handle_.serialize(buffer)) {
+        if ((err_ = child_handle_.fail())) {
+          return true; // error condition -- stop.
+        } else {
+          return false; // eof condition -- continue.
+        }
+      }
+      return true; // wrote maximum bytes -- stop.
+    };
+
+    if (child_idx_ <= 20) {
+      while (child_idx <= 20) {
+        if (f())
+          return *this;
+        child_handle_ = HTTPSerializationHandle{get_field(++child_idx_)};
+      }
+    } else {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+    }
+    return *this;
+  }
+
+  void reset() { *this = HTTPSerializationHandle{obj_}; }
+
+  bool eof() const { return child_idx_ > 20; }
+
+  operator bool() const { return !fail() && !eof(); }
+
+ private:
+  HTTPSerializationHandle<std::string_view> child_handle_;
+  std::size_t                               child_idx_;
+};
 
 #pragma endregion HTTPEntityHeader
 
