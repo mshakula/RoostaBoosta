@@ -48,7 +48,7 @@ configDACClock_()
 }
 
 // switching audio buffer.
-std::uint32_t audio_buf[kBankCount][MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE]
+std::uint32_t audio_buf[kBankCount][RB_MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE]
   __attribute__((section("AHBSRAM0")));
 
 /// \brief The callback functor type for when the DMA encounters an error.
@@ -83,7 +83,7 @@ struct DataCallback_
     if (DMA.irqType() == MODDMA::TcIrq)
       DMA.clearTcIrq();
 
-    osSignalSet(tid, EVENT_FLAG_AUDIO_LOAD);
+    osSignalSet(tid, RB_EVENT_FLAG_AUDIO_LOAD);
   }
 };
 
@@ -173,15 +173,15 @@ readBuffer_(FileInfo_& file_info, bool& more, std::uint32_t* buffer)
     case FileType_u8pcm: {
       FILE* const fp = file_info.u8pcm.file;
       std::size_t read_ct =
-        std::fread(buffer, 1, MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE, fp);
-      if (read_ct < MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE) {
+        std::fread(buffer, 1, RB_MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE, fp);
+      if (read_ct < RB_MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE) {
         if (std::ferror(fp)) {
           return 1;
         } else if (std::feof(fp)) {
           std::memset(
             buffer + read_ct,
             0,
-            (MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE - read_ct) * sizeof(*buffer));
+            (RB_MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE - read_ct) * sizeof(*buffer));
           more = false;
         }
       }
@@ -259,7 +259,7 @@ playMusic(const char* file_name, double initial_speed)
 
   LPC_DAC->DACCNTVAL = static_cast<std::uint16_t>(
     kClockFreq / initial_speed /
-    (file_info.rate ? file_info.rate : MUSIC_PLAYER_DEFAULT_PCM_RATE));
+    (file_info.rate ? file_info.rate : RB_MUSIC_PLAYER_DEFAULT_PCM_RATE));
   LPC_DAC->DACCTRL |= 0xC; // Start running DAC.
 
   debug("\r\n[MusicPlayer] DAC enabled.");
@@ -270,7 +270,7 @@ playMusic(const char* file_name, double initial_speed)
 
   // Start audio buffering loop.
   debug("\r\n[MusicPlayer] Starting audio buffering idle loop.");
-  osSignalWait(EVENT_FLAG_AUDIO_LOAD, osWaitForever);
+  osSignalWait(RB_EVENT_FLAG_AUDIO_LOAD, osWaitForever);
   while (more) {
     // debug("\r\n[MusicPlayer] Fetching more from file...");
     int next_bank = (curr_bank - 1 + kBankCount) % kBankCount;
@@ -279,7 +279,7 @@ playMusic(const char* file_name, double initial_speed)
       goto end2;
     }
     // debug(" done.");
-    osSignalWait(EVENT_FLAG_AUDIO_LOAD, osWaitForever);
+    osSignalWait(RB_EVENT_FLAG_AUDIO_LOAD, osWaitForever);
   }
   debug("\r\n[MusicPlayer] Finished playing audio.");
 

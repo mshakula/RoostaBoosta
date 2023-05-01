@@ -35,9 +35,10 @@ struct HTTPSerializationHandleBase
       gcount_{o.gcount_}
   {
   }
+  ~HTTPSerializationHandleBase() = default;
   HTTPSerializationHandleBase& operator=(const HTTPSerializationHandleBase& o)
   {
-    std::destroy_at(this);
+    this->~HTTPSerializationHandleBase();
     ::new (this) HTTPSerializationHandleBase{o.obj_, o.err_};
     return *this;
   }
@@ -65,18 +66,21 @@ class HTTPSerializationHandle<const char*>
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<const char*>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        ptr_ - obj_};
+        reinterpret_cast<std::intptr_t>(obj_)};
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -120,26 +124,26 @@ class HTTPSerializationHandle<std::string_view>
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<std::string_view>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        reinterpret_cast<std::intptr_t>(obj_.data())};
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
     gcount_ =
       std::min(static_cast<std::size_t>(buffer.size()), obj_.size() - idx_);
-    if (gcount_ == 0) {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_};
-      return *this;
-    }
     std::copy_n(obj_.data() + idx_, gcount_, buffer.begin());
     idx_ += gcount_;
     return *this;
@@ -188,16 +192,21 @@ class HTTPSerializationHandle<HTTPStatusCode> :
 
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPStatusCode>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (idx_ >= req_) {
       err_ = ErrorStatus(
-        MBED_ERROR_CODE_ENODATA, "Serialization has already completed.", idx_);
+        MBED_ERROR_CODE_ENODATA,
+        "Serialization has already completed.",
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -245,18 +254,21 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPRequestHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
       return *this;
+      RB_ERROR_LOG(err_);
     } else if (eof()) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        child_idx_);
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -264,6 +276,7 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
       if (!field.serialize(buffer)) {
         if ((err_ = field.fail())) {
           gcount_ += field.gcount();
+          RB_ERROR_LOG(err_);
           return true; // error condition -- stop.
         } else {
           gcount_ += field.gcount();
@@ -279,16 +292,19 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
 #ifdef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
 #error "RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD already defined."
 #endif
-#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                       \
-  field_id, dependent_field, next_field)                                    \
-  case field_id:                                                            \
-    if (!dependent_field.empty() && f(std::get<field_id>(child_handle_))) { \
-      return *this;                                                         \
-    }                                                                       \
-    child_handle_.emplace<field_id + 1>(                                    \
-      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(          \
-        next_field));                                                       \
-    ++child_idx_;
+#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                         \
+  field_id, dependent_field, next_field)                                      \
+  case field_id:                                                              \
+    if (                                                                      \
+      !dependent_field.empty() && !std::get<field_id>(child_handle_).eof() && \
+      f(std::get<field_id>(child_handle_))) {                                 \
+      return *this;                                                           \
+    }                                                                         \
+    child_handle_.emplace<field_id + 1>(                                      \
+      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(            \
+        next_field));                                                         \
+    ++child_idx_;                                                             \
+    [[fallthrough]];
 
     gcount_ = 0;
     switch (child_idx_) {
@@ -402,10 +418,15 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
         54, obj_.user_agent, obj_.user_agent);
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(55, obj_.user_agent, "\r\n");
       case 56:
-        if (!obj_.user_agent.empty() && f(std::get<56>(child_handle_))) {
+        if (
+          !obj_.user_agent.empty() && !std::get<56>(child_handle_).eof() &&
+          f(std::get<56>(child_handle_))) {
           return *this;
         }
         ++child_idx_;
+        break;
+      default:
+        RB_ERROR(ErrorStatus(ENOTRECOVERABLE, "Ill-formed program."));
     }
     return *this;
 #undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
@@ -495,18 +516,21 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPResponseHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        child_idx_);
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -514,6 +538,7 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
       if (!field.serialize(buffer)) {
         if ((err_ = field.fail())) {
           gcount_ += field.gcount();
+          RB_ERROR_LOG(err_);
           return true; // error condition -- stop.
         } else {
           gcount_ += field.gcount();
@@ -529,16 +554,19 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
 #ifdef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
 #error "RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD already defined."
 #endif
-#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                       \
-  field_id, dependent_field, next_field)                                    \
-  case field_id:                                                            \
-    if (!dependent_field.empty() && f(std::get<field_id>(child_handle_))) { \
-      return *this;                                                         \
-    }                                                                       \
-    child_handle_.emplace<field_id + 1>(                                    \
-      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(          \
-        next_field));                                                       \
-    ++child_idx_;
+#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                         \
+  field_id, dependent_field, next_field)                                      \
+  case field_id:                                                              \
+    if (                                                                      \
+      !dependent_field.empty() && !std::get<field_id>(child_handle_).eof() && \
+      f(std::get<field_id>(child_handle_))) {                                 \
+      return *this;                                                           \
+    }                                                                         \
+    child_handle_.emplace<field_id + 1>(                                      \
+      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(            \
+        next_field));                                                         \
+    ++child_idx_;                                                             \
+    [[fallthrough]];
 
     gcount_ = 0;
     switch (child_idx_) {
@@ -592,10 +620,16 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(
         25, obj_.www_authenticate, "\r\n");
       case 26:
-        if (!obj_.www_authenticate.empty() && f(std::get<26>(child_handle_))) {
+        if (
+          !obj_.www_authenticate.empty() &&
+          !std::get<26>(child_handle_).eof() &&
+          f(std::get<26>(child_handle_))) {
           return *this;
         }
         ++child_idx_;
+        break;
+      default:
+        RB_ERROR(ErrorStatus(ENOTRECOVERABLE, "Ill-formed program."));
     }
     return *this;
 #undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
@@ -655,18 +689,21 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPGeneralHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        child_idx_);
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -674,6 +711,7 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
       if (!field.serialize(buffer)) {
         if ((err_ = field.fail())) {
           gcount_ += field.gcount();
+          RB_ERROR_LOG(err_);
           return true; // error condition -- stop.
         } else {
           gcount_ += field.gcount();
@@ -689,16 +727,19 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
 #ifdef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
 #error "RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD already defined."
 #endif
-#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                       \
-  field_id, dependent_field, next_field)                                    \
-  case field_id:                                                            \
-    if (!dependent_field.empty() && f(std::get<field_id>(child_handle_))) { \
-      return *this;                                                         \
-    }                                                                       \
-    child_handle_.emplace<field_id + 1>(                                    \
-      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(          \
-        next_field));                                                       \
-    ++child_idx_;
+#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                         \
+  field_id, dependent_field, next_field)                                      \
+  case field_id:                                                              \
+    if (                                                                      \
+      !dependent_field.empty() && !std::get<field_id>(child_handle_).eof() && \
+      f(std::get<field_id>(child_handle_))) {                                 \
+      return *this;                                                           \
+    }                                                                         \
+    child_handle_.emplace<field_id + 1>(                                      \
+      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(            \
+        next_field));                                                         \
+    ++child_idx_;                                                             \
+    [[fallthrough]];
 
     gcount_ = 0;
     switch (child_idx_) {
@@ -750,10 +791,15 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
         24, obj_.warning, obj_.warning);
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(25, obj_.warning, "\r\n");
       case 26:
-        if (!obj_.warning.empty() && f(std::get<26>(child_handle_))) {
+        if (
+          !obj_.warning.empty() && !std::get<26>(child_handle_).eof() &&
+          f(std::get<26>(child_handle_))) {
           return *this;
         }
         ++child_idx_;
+        break;
+      default:
+        RB_ERROR(ErrorStatus(ENOTRECOVERABLE, "Ill-formed program."));
     }
     return *this;
 #undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
@@ -813,18 +859,21 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
   }
   HTTPSerializationHandle(const HTTPSerializationHandle&)            = default;
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPEntityHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        child_idx_);
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -832,6 +881,7 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
       if (!field.serialize(buffer)) {
         if ((err_ = field.fail())) {
           gcount_ += field.gcount();
+          RB_ERROR_LOG(err_);
           return true; // error condition -- stop.
         } else {
           gcount_ += field.gcount();
@@ -847,16 +897,19 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
 #ifdef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
 #error "RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD already defined."
 #endif
-#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                       \
-  field_id, dependent_field, next_field)                                    \
-  case field_id:                                                            \
-    if (!dependent_field.empty() && f(std::get<field_id>(child_handle_))) { \
-      return *this;                                                         \
-    }                                                                       \
-    child_handle_.emplace<field_id + 1>(                                    \
-      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(          \
-        next_field));                                                       \
-    ++child_idx_;
+#define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(                         \
+  field_id, dependent_field, next_field)                                      \
+  case field_id:                                                              \
+    if (                                                                      \
+      !dependent_field.empty() && !std::get<field_id>(child_handle_).eof() && \
+      f(std::get<field_id>(child_handle_))) {                                 \
+      return *this;                                                           \
+    }                                                                         \
+    child_handle_.emplace<field_id + 1>(                                      \
+      HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(            \
+        next_field));                                                         \
+    ++child_idx_;                                                             \
+    [[fallthrough]];
 
     gcount_ = 0;
     switch (child_idx_) {
@@ -930,12 +983,16 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(
         30, obj_.extension_header, "\r\n");
       case 31:
-        if (!obj_.last_modified.empty() && f(std::get<31>(child_handle_))) {
+        if (
+          !obj_.last_modified.empty() && !std::get<31>(child_handle_).eof() &&
+          f(std::get<31>(child_handle_))) {
           return *this;
         }
         ++child_idx_;
+        break;
+      default:
+        RB_ERROR(ErrorStatus(ENOTRECOVERABLE, "Ill-formed program."));
     }
-
     return *this;
 #undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
   }
@@ -988,6 +1045,7 @@ template<>
 class HTTPSerializationHandle<HTTPRequest> :
     public HTTPSerializationHandleBase<HTTPRequest>
 {
+ public:
   HTTPSerializationHandle(const HTTPRequest& obj) :
       HTTPSerializationHandleBase{obj},
       child_idx_{0},
@@ -1001,18 +1059,21 @@ class HTTPSerializationHandle<HTTPRequest> :
   {
   }
   HTTPSerializationHandle& operator=(const HTTPSerializationHandle&) = default;
-
+  ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
+    debug("\r\n[HTTPSerializationHandle] serialize<HTTPRequest>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
+      RB_ERROR_LOG(err_);
       return *this;
     } else if (eof()) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_ENODATA,
         "Serialization has already completed.",
-        child_idx_);
+        reinterpret_cast<std::intptr_t>(&obj_));
+      RB_ERROR_LOG(err_);
       return *this;
     }
 
@@ -1020,8 +1081,10 @@ class HTTPSerializationHandle<HTTPRequest> :
       if (!field.serialize(buffer)) {
         if ((err_ = field.fail())) {
           gcount_ += field.gcount();
+          RB_ERROR_LOG(err_);
           return true; // error condition -- stop.
         } else {
+          assert(field.eof());
           gcount_ += field.gcount();
           buffer = mbed::Span<char>{
             buffer.data() + field.gcount(), buffer.size() - field.gcount()};
@@ -1037,13 +1100,16 @@ class HTTPSerializationHandle<HTTPRequest> :
 #endif
 #define RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(field_id, next_field) \
   case field_id:                                                           \
-    if (f(std::get<field_id>(child_handle_))) {                            \
+    if (                                                                   \
+      !std::get<field_id>(child_handle_).eof() &&                          \
+      f(std::get<field_id>(child_handle_))) {                              \
       return *this;                                                        \
     }                                                                      \
     child_handle_.emplace<field_id + 1>(                                   \
       HTTPSerializationHandle<std::decay_t<decltype(next_field)>>(         \
         next_field));                                                      \
-    ++child_idx_;
+    ++child_idx_;                                                          \
+    [[fallthrough]];
 
     gcount_ = 0;
     switch (child_idx_) {
@@ -1057,20 +1123,25 @@ class HTTPSerializationHandle<HTTPRequest> :
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(7, obj_.entity_header);
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(8, "\r\n");
       RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(9, obj_.message_body);
-      case 10:
-        if (f(std::get<10>(child_handle_))) {
+      RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD(10, "\r\n");
+      case 11:
+        if (
+          !std::get<11>(child_handle_).eof() &&
+          f(std::get<11>(child_handle_))) {
           return *this;
         }
         ++child_idx_;
+        break;
+      default:
+        RB_ERROR(ErrorStatus(ENOTRECOVERABLE, "Ill-formed program."));
     }
-
     return *this;
 #undef RB_HTTP_SERIALIZATION_HANDLE_SERIALIZE_FIELD
   }
 
   void reset() { *this = HTTPSerializationHandle{obj_}; }
 
-  bool eof() const { return child_idx_ > 10; }
+  bool eof() const { return child_idx_ > 11; }
 
   operator bool() const { return !fail() && !eof(); }
 
@@ -1087,7 +1158,8 @@ class HTTPSerializationHandle<HTTPRequest> :
     HTTPSerializationHandle<HTTPRequestHeader>, // request-header
     HTTPSerializationHandle<HTTPEntityHeader>,  // entity-header
     HTTPSerializationHandle<const char*>,       // crlf
-    HTTPSerializationHandle<std::string_view>>  // body
+    HTTPSerializationHandle<std::string_view>,  // body
+    HTTPSerializationHandle<const char*>>       // crlf
     child_handle_;
 };
 

@@ -8,7 +8,7 @@
       "platform.stdio-baud-rate": 115200,
       "platform.error-filename-capture-enabled": true,
       "platform.callback-nontrivial": true,
-      "rtos.main-thread-stack-size": 2048
+      "rtos.main-thread-stack-size": 4096
     }
   },
   "config": {
@@ -37,29 +37,34 @@
       "macro_name": "SFX_DIR",
       "value": "\"/\" AUX_MOUNT_POINT \"/sounds/\""
     },
+    "ErrorStatus.fatal": {
+      "help": "Enable to make all logged errors fatal.",
+      "macro_name": "RB_ERROR_LOG_DIE",
+      "value": "1"
+    },
     "event_flag.audio_load": {
       "help": "Event flag for audio load.",
-      "macro_name": "EVENT_FLAG_AUDIO_LOAD",
+      "macro_name": "RB_EVENT_FLAG_AUDIO_LOAD",
       "value": "0x1"
     },
     "event_flag.network_packet": {
       "help": "Event flag for network packet readable.",
-      "macro_name": "EVENT_FLAG_NETWORK_PACKET",
+      "macro_name": "RB_EVENT_FLAG_NETWORK_PACKET",
       "value": "0x2"
     },
     "MusicPlayer.audio_buf_bank_size": {
       "help": "Size of the audio buffer bank in samples (uint32_t). 1 << 9 == 512 seems to be the lower limit, after which it becomes crunchy again.",
-      "macro_name": "MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE",
+      "macro_name": "RB_MUSIC_PLAYER_AUDIO_BUF_BANK_SIZE",
       "value": "(1 << 11)"
     },
     "MusicPlayer.default_pcm_rate": {
       "help": "Default PCM rate for the music player.",
-      "macro_name": "MUSIC_PLAYER_DEFAULT_PCM_RATE",
+      "macro_name": "RB_MUSIC_PLAYER_DEFAULT_PCM_RATE",
       "value": "24000"
     },
     "HTTPClient.default_timeout": {
       "help": "Default timeout for HTTPClient in milliseconds. 0 for no timeout.",
-      "macro_name": "HTTP_CLIENT_DEFAULT_TIMEOUT",
+      "macro_name": "RB_HTTP_CLIENT_DEFAULT_TIMEOUT",
       "value": "10000"
     }
   }

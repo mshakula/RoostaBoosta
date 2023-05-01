@@ -29,6 +29,7 @@
 #include <utility>
 #include <variant>
 
+#include <mbed_debug.h>
 #include <platform/Callback.h>
 #include <platform/Span.h>
 #include <rtos/EventFlags.h>
@@ -94,7 +95,7 @@ struct HTTPSerializationBase
   /// \brief Return a new serialization handle for this object.
   HTTPSerializationHandle<T> get_serialization_handle() const
   {
-    return HTTPSerializationHandle{*static_cast<T*>(this)};
+    return HTTPSerializationHandle{*static_cast<const T*>(this)};
   }
 
   /// \brief Serialize the object into a buffer.
@@ -471,7 +472,7 @@ class HTTPClient
     const HTTPRequest&        request,
     HTTPResponse&             response,
     std::chrono::milliseconds timeout =
-      std::chrono::milliseconds{HTTP_CLIENT_DEFAULT_TIMEOUT},
+      std::chrono::milliseconds{RB_HTTP_CLIENT_DEFAULT_TIMEOUT},
     mbed::Callback<void()> rcv_callback = {});
 
  protected:

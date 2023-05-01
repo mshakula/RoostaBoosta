@@ -35,7 +35,7 @@ add_subdirectory(third_party/MODDMA)
 
 add_executable(RoostaBoosta)
 
-file(GLOB sources CONFIGURE_DEPENDS src/*.cpp src/*.h)
+file(GLOB sources CONFIGURE_DEPENDS src/*.cpp src/*.c)
 
 target_sources(RoostaBoosta PRIVATE ${sources})
 

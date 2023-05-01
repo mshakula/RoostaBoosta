@@ -23,6 +23,18 @@ namespace rb {
 /// \brief A wrapper for the individual parameters needed for mbed warning.
 #define RB_WARN(x) MBED_WARNING1(x.status, x.message, x.value)
 
+/// \brief Log an error. If RB_ERROR_LOG_DIE is defined, the program will
+/// terminate.
+#ifndef DNDEBUG
+#if defined(RB_ERROR_LOG_DIE) && RB_ERROR_LOG_DIE
+#define RB_ERROR_LOG(x) RB_ERROR(x)
+#else
+#define RB_ERROR_LOG(x) RB_WARN(x)
+#endif // RB_ERROR_LOG_DIE
+#else
+#define RB_ERROR_LOG(x) static_cast<void>(x)
+#endif // DNDEBUG
+
 /// \brief A wrapper for the individual parameters needed for mbed error.
 /// reporting.
 struct ErrorStatus
@@ -56,7 +68,7 @@ struct ErrorStatus
   constexpr ErrorStatus(const ErrorStatus&)            = default;
   constexpr ErrorStatus& operator=(const ErrorStatus&) = default;
 
-  constexpr      operator bool() const { return status < 0; }
+  constexpr      operator bool() const { return code() != 0; }
   constexpr bool operator==(const ErrorStatus& other) const
   {
     return status == other.status;

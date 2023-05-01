@@ -46,7 +46,7 @@ HTTPClient::Request(
   //   ErrorStatus   err;
   //   std::uint32_t os_ret;
 
-  //   os_ret = response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET);
+  //   os_ret = response.event_flags_.set(RB_EVENT_FLAG_NETWORK_PACKET);
   //   if (os_ret & osFlagsError)
   //     return ErrorStatus{
   //       MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to clear flags",
@@ -62,7 +62,7 @@ HTTPClient::Request(
 
   //     // Signal to calling thread that data is available.
   //     std::uint32_t os_ret =
-  //     response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET); if (os_ret &
+  //     response.event_flags_.set(RB_EVENT_FLAG_NETWORK_PACKET); if (os_ret &
   //     osFlagsError) {
   //       ErrorStatus err{
   //         MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to set flags",
