@@ -49,6 +49,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
                         $<$<COMPILE_LANGUAGE:CXX>:-Wno-register>)
 endif()
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SILENCE_WARNINGS)
+  target_compile_options(RoostaBoosta PUBLIC "-Wno-narrowing"
+                                             "-Wno-sign-compare")
+endif()
+
 # also have to enable in mbed_app.json
 target_link_libraries(
   RoostaBoosta PRIVATE mbed-os mbed-storage-blockdevice mbed-storage-filesystem

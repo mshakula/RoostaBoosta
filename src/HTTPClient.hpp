@@ -26,6 +26,7 @@
 #include <chrono>
 #include <limits>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include <platform/Callback.h>
@@ -73,6 +74,9 @@ class HTTPSerializationHandle
   /// \brief Return true if the serialization handle is at the end of stream.
   bool eof() const = delete;
 
+  /// \brief Return the amount of characters previously read.
+  std::size_t gcount() const = delete;
+
   /// \brief Return last error status.
   ///
   /// Common errors:
@@ -87,11 +91,6 @@ class HTTPSerializationHandle
 template<class T>
 struct HTTPSerializationBase
 {
-  static constexpr std::basic_string_view<char, std::char_traits<char>> CRLF =
-    "\r\n";
-  static constexpr std::basic_string_view<char, std::char_traits<char>> SP =
-    " ";
-
   /// \brief Return a new serialization handle for this object.
   HTTPSerializationHandle<T> get_serialization_handle() const
   {

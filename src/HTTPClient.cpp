@@ -26,7 +26,8 @@ namespace rb {
 bool
 HTTPRequest::valid() const
 {
-  static_assert(false, "Not implemented");
+  // static_assert(false, "Not implemented");
+  return true;
 }
 
 #pragma endregion HTTPRequest
@@ -42,41 +43,45 @@ HTTPClient::Request(
   std::chrono::milliseconds timeout,
   mbed::Callback<void()>    rcv_callback)
 {
-  ErrorStatus   err;
-  std::uint32_t os_ret;
+  //   ErrorStatus   err;
+  //   std::uint32_t os_ret;
 
-  os_ret = response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET);
-  if (os_ret & osFlagsError)
-    return ErrorStatus{
-      MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to clear flags", os_ret};
+  //   os_ret = response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET);
+  //   if (os_ret & osFlagsError)
+  //     return ErrorStatus{
+  //       MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to clear flags",
+  //       os_ret};
 
-  if (!request)
-    return ErrorStatus{MBED_ERROR_CODE_INVALID_FORMAT, "Invalid request"};
+  //   if (!request)
+  //     return ErrorStatus{MBED_ERROR_CODE_INVALID_FORMAT, "Invalid request"};
 
-  auto input_callback = [this, rcv_callback, &response]() {
-    // If there is a critical ISR rcv callback, call it.
-    if (rcv_callback)
-      rcv_callback();
+  //   auto input_callback = [this, rcv_callback, &response]() {
+  //     // If there is a critical ISR rcv callback, call it.
+  //     if (rcv_callback)
+  //       rcv_callback();
 
-    // Signal to calling thread that data is available.
-    std::uint32_t os_ret = response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET);
-    if (os_ret & osFlagsError) {
-      ErrorStatus err{
-        MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to set flags", os_ret};
-      RB_ERROR(err);
-    }
-  };
+  //     // Signal to calling thread that data is available.
+  //     std::uint32_t os_ret =
+  //     response.event_flags_.set(EVENT_FLAG_NETWORK_PACKET); if (os_ret &
+  //     osFlagsError) {
+  //       ErrorStatus err{
+  //         MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to set flags",
+  //         os_ret};
+  //       RB_ERROR(err);
+  //     }
+  //   };
 
-  if ((err = registerInputCallback(input_callback)))
-    goto err0;
+  //   if ((err = registerInputCallback(input_callback)))
+  //     goto err0;
 
-  // Send request.
-  if ((err = sendRequest(request)))
-    goto err1;
+  //   // Send request.
+  //   if ((err = sendRequest(request)))
+  //     goto err1;
 
-err1:
-  unregisterInputCallback();
-err0:
+  // err1:
+  //   unregisterInputCallback();
+  // err0:
+  //   return ErrorStatus{};
   return ErrorStatus{};
 }
 
