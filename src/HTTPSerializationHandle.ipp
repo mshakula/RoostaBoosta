@@ -69,7 +69,6 @@ class HTTPSerializationHandle<const char*>
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<const char*>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
@@ -127,7 +126,6 @@ class HTTPSerializationHandle<std::string_view>
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<std::string_view>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
@@ -195,7 +193,6 @@ class HTTPSerializationHandle<HTTPStatusCode> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPStatusCode>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus{
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0};
@@ -257,7 +254,6 @@ class HTTPSerializationHandle<HTTPRequestHeader> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPRequestHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
@@ -519,7 +515,6 @@ class HTTPSerializationHandle<HTTPResponseHeader> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPResponseHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
@@ -692,7 +687,6 @@ class HTTPSerializationHandle<HTTPGeneralHeader> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPGeneralHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
@@ -862,7 +856,6 @@ class HTTPSerializationHandle<HTTPEntityHeader> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPEntityHeader>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
@@ -1062,7 +1055,6 @@ class HTTPSerializationHandle<HTTPRequest> :
   ~HTTPSerializationHandle()                                         = default;
   HTTPSerializationHandle& serialize(mbed::Span<char> buffer)
   {
-    debug("\r\n[HTTPSerializationHandle] serialize<HTTPRequest>");
     if (buffer.size() == 0) {
       err_ = ErrorStatus(
         MBED_ERROR_CODE_EINVAL, "Buffer size must be greater than 0.", 0);
