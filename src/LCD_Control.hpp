@@ -12,6 +12,7 @@
 #endif // __cplusplus
 
 #include "weather_data.hpp"
+#include <chrono>
 
 // ======================= Public Interface ==========================
 
@@ -20,6 +21,12 @@
 /// \param data The weather data to print.
 void
 Display_Weather(weather_data* data);
+
+/// \brief Prints the passed in time to the LCD.
+///
+/// \param data The time to print.
+void
+Display_Time(std::chrono::time_point<std::chrono::system_clock> time);
 
 // ===================== Detail Implementation =======================
 

@@ -124,8 +124,9 @@ WifiClient::connect(const char* ssid, const char* phrase)
   flushBuffer();
   while (timer.elapsed_time() < _timeout) {
     printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
+    memset(_ip, '\0', sizeof(_ip));
     getreply(_ip, 16);
-    // printf("%s\n", _ip); //DEBUG ONLY
+    //printf("%s\n", _ip); //DEBUG ONLY
     if (strcmp(_ip, "nil") != 0) {
       timer.stop();
       timer.reset();
@@ -184,7 +185,7 @@ WifiClient::scan(char* aplist, int size)
 int
 WifiClient::http_get_request(
   const char* address,
-  const char* payload,
+  char* payload,
   const char* header,
   char*       respBuffer,
   size_t      respBufferSize)

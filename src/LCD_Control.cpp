@@ -8,6 +8,9 @@
 
 #include <mbed.h>
 
+#include <chrono>
+#include <ctime>
+
 #include <4DGL-uLCD-144-MbedOS6/uLCD_4DGL.hpp>
 
 #include "pinout.hpp"
@@ -57,5 +60,34 @@ Display_Weather(weather_data* data)
   // format weather part 2
   sprintf(line, "%.15s", data->weather.c_str() + 15);
   uLCD.text_string(line, 1, 8, FONT_7X8, GREEN);
+  ThisThread::sleep_for(100ms);
+}
+
+void
+Display_Time(std::chrono::time_point<std::chrono::system_clock> time)
+{
+  char line[30];
+
+  uLCD.cls();
+  ThisThread::sleep_for(100ms);
+
+  //print header
+  sprintf(line, "Current Time:");
+  uLCD.text_string(line, 1, 1, FONT_7X8, GREEN);
+  ThisThread::sleep_for(100ms);
+
+  //get char* of time, ctime formatted
+  time_t Ttime_ = chrono::system_clock::to_time_t(time);
+  const time_t* Ttime = &Ttime_;
+  const char* timeChar = ctime(Ttime);
+
+  //print first half
+  sprintf(line, "%.11s", timeChar);
+  uLCD.text_string(line, 1, 3, FONT_7X8, GREEN);
+  ThisThread::sleep_for(100ms);
+
+  //print second half
+  sprintf(line, "%.15s", timeChar + 11);
+  uLCD.text_string(line, 1, 5, FONT_7X8, GREEN);
   ThisThread::sleep_for(100ms);
 }

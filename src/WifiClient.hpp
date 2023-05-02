@@ -78,7 +78,7 @@ class WifiClient
   /// \brief Send a request.
   int http_get_request(
     const char* address,
-    const char* payload,
+    char* payload,
     const char* header,
     char*       respBuffer,
     size_t      respBufferSize);
@@ -130,7 +130,7 @@ class WifiClient
 
   // TODO WISHLIST: ipv6?
   // this requires nodemcu support
-  char                      _ip[16];
+  char                      _ip[16] = "nil";
   int                       _baud;
   std::chrono::microseconds _timeout;
 };
