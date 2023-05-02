@@ -17,6 +17,24 @@
 
 namespace {
 
+// std::uint32_t os_ret = osEventFlagsWait(
+//   flag_id_,
+//   RB_EVENT_FLAG_NETWORK_PACKET,
+//   osFlagsWaitAny,
+//   timeout.count() > 0 ? timeout.count() : osWaitForever);
+// if (os_ret & osFlagsError) {
+//   if (os_ret & osFlagsErrorTimeout) {
+//     err_ = ErrorStatus{
+//       MBED_ERROR_CODE_ETIMEDOUT,
+//       "Request timed out with timeout = ",
+//       timeout.count()};
+//   } else {
+//     err_ = ErrorStatus{
+//       MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT,
+//       "Unknown flags error while waiting for response."};
+//   };
+// }
+
 } // namespace
 
 // ====================== Global Definitions =========================
@@ -30,71 +48,45 @@ HTTPResponsePromise::HTTPResponsePromise(
   HTTPResponse& obj,
   HTTPClient&   client) :
     obj_{&obj},
+    err_{},
     client_{&client},
-    err_{}
+    req_id_{0}
 {
-  osEventFlagsAttr_t attr = {
-    .name      = "HTTPResponseEventFlag",
-    .attr_bits = 0,
-    .cb_mem    = &flag_mem_,
-    .cb_size   = sizeof(flag_mem_)};
-  flag_id_ = osEventFlagsNew(&attr);
 }
 
 HTTPResponsePromise::HTTPResponsePromise(HTTPResponsePromise&& other) :
     obj_{other.obj_},
-    client_{other.client_},
     err_{other.err_},
-    flag_id_{other.flag_id_}
+    client_{other.client_},
+    req_id_{other.req_id_}
 {
-  std::memcpy(&flag_mem_, &other.flag_mem_, sizeof(flag_mem_));
-  other.flag_id_ = nullptr;
+  other.req_id_ = 0;
 }
 
 HTTPResponsePromise&
 HTTPResponsePromise::operator=(HTTPResponsePromise&& other)
 {
   if (this != &other) {
-    obj_     = other.obj_;
-    client_  = other.client_;
-    err_     = other.err_;
-    flag_id_ = other.flag_id_;
-    std::memcpy(&flag_mem_, &other.flag_mem_, sizeof(flag_mem_));
-    other.flag_id_ = nullptr;
+    obj_          = other.obj_;
+    err_          = other.err_;
+    client_       = other.client_;
+    req_id_       = other.req_id_;
+    other.req_id_ = 0;
   }
   return *this;
 }
 
 HTTPResponsePromise::~HTTPResponsePromise()
 {
-  if (flag_id_ != nullptr) {
-    if (osEventFlagsDelete(flag_id_) != osOK) {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_FAILED_OPERATION, "Failed to delete event flag."};
-      RB_ERROR(err_); // fatal error in dtor -- this is a bug.
-    }
-  }
+  drop();
+  req_id_ = 0;
 }
 
 HTTPResponsePromise&
 HTTPResponsePromise::wait(std::chrono::milliseconds timeout)
 {
-  std::uint32_t os_ret = osEventFlagsWait(
-    flag_id_,
-    RB_EVENT_FLAG_NETWORK_PACKET,
-    osFlagsWaitAny,
-    timeout.count() > 0 ? timeout.count() : osWaitForever);
-  if (os_ret & osFlagsError) {
-    if (os_ret & osFlagsErrorTimeout) {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_ETIMEDOUT,
-        "Request timed out with timeout = ",
-        timeout.count()};
-    } else {
-      err_ = ErrorStatus{
-        MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT,
-        "Unknown flags error while waiting for response."};
-    };
+  if (req_id_) {
+    err_ = client_->wait(req_id_, timeout);
   }
   return *this;
 }
@@ -102,20 +94,31 @@ HTTPResponsePromise::wait(std::chrono::milliseconds timeout)
 void
 HTTPResponsePromise::drop()
 {
-  client_->client_->unregisterInputCallback();
-  client_->drop();
+  if (req_id_) {
+    client_->drop(req_id_);
+  }
 }
 
 std::size_t
 HTTPResponsePromise::available() const
 {
-  return client_->available(req_id_);
+  if (req_id_) {
+    return client_->available(req_id_);
+  } else {
+    return 0;
+  }
 }
 
 HTTPResponsePromise&
 HTTPResponsePromise::read(mbed::Span<char> buffer)
 {
-  err_ = client_->read(req_id_, buffer);
+  if (req_id_) {
+    err_ = client_->read(req_id_, buffer);
+  } else {
+    err_ = ErrorStatus{
+      MBED_ERROR_CODE_INVALID_ARGUMENT,
+      "Attempted to read from a null HTTPResponsePromise."};
+  }
   return *this;
 }
 

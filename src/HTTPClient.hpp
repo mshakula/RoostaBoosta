@@ -424,7 +424,10 @@ struct HTTPResponse
 
 class HTTPClient;
 
-/// \brief Helper handle to model a promise of an HTTP request.
+/// \brief A handle to model a promise of an HTTP request.
+///
+/// This class is used to model a promise of an HTTP request. Because HTTP
+/// response data can only be read once, this class is not copyable.
 class HTTPResponsePromise
 {
   friend class HTTPClient;
@@ -440,12 +443,6 @@ class HTTPResponsePromise
 
   ~HTTPResponsePromise();
 
-  /// \brief Wait for response.
-  ///
-  /// \param timeout Timeout in milliseconds. If 0, wait forever.
-  HTTPResponsePromise& wait(
-    std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
-
   constexpr HTTPResponse& response() const { return *obj_; }
   constexpr               operator HTTPResponse&() const { return response(); }
 
@@ -453,6 +450,10 @@ class HTTPResponsePromise
 
   constexpr ErrorStatus fail() const { return err_; }
   constexpr             operator bool() const { return err_; }
+
+  /// \see HTTPClient::wait()
+  HTTPResponsePromise& wait(
+    std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
 
   /// \see HTTPClient::drop()
   void drop();
@@ -473,7 +474,7 @@ class HTTPResponsePromise
   HTTPResponse* obj_;
   ErrorStatus   err_;
   HTTPClient*   client_;
-  int           req_id_;
+  int           req_id_; //!<\brief The request ID. 0 if unassociated.
 };
 
 /// \brief A virtual interface for an HTTP/1.1 client.
