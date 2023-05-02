@@ -1,10 +1,11 @@
 /// \file WifiClient.hpp
 /// \date 2023-04-26
 /// \author Raymond Barrett (rbarrett38@gatech.edu)
+/// \author mshakula (matvey@gatech.edu)
 ///
 /// \brief WifI client for ESP8266.
 ///
-/// \details Datasheet: http://www.electrodragon.com/w/Wi07c.
+/// Module Datasheet: http://www.electrodragon.com/w/Wi07c.
 
 #ifndef RB_WIFICLIENT_HPP
 #define RB_WIFICLIENT_HPP
@@ -13,19 +14,27 @@
 #error "WifiClient.hpp is a cxx-only header."
 #endif // __cplusplus
 
-#include <mbed.h>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include <netinet/ip.h>
+
+#include <mbed_config.h>
+
+#include <PinNames.h>
+#include <drivers/BufferedSerial.h>
+
+#include "HTTPClient.hpp"
 
 // ======================= Public Interface ==========================
 
 namespace rb {
 
-class WifiClient
+/// \brief A implementation of the HTTPClient interface for the ESP8266 serial
+/// lua module.
+class WifiClient : public HTTPClient
 {
-  struct Handle
-  {
-    FILE*                 file;
-    mbed::BufferedSerial* serial;
-  };
 
  public:
   /// \brief Constructor
@@ -34,105 +43,62 @@ class WifiClient
   /// \param rx mbed pin to use for rx line of Serial interface
   /// \param reset reset pin of the wifi module ()
   /// \param baud the baudrate of the serial connection
-  /// \param timeout the timeout of the serial connection
-  WifiClient(
-    PinName                   tx,
-    PinName                   rx,
-    PinName                   reset,
-    int                       baud    = 9600,
-    std::chrono::microseconds timeout = 5s);
+  WifiClient(PinName tx, PinName r);
 
-  /// \brief Initialize the wifi hardware
-  ///
-  /// \return true if successful
-  bool init();
+  /// \brief Reset the wifi module
+  void reset();
 
   /// \brief Connect the wifi module to the specified ssid.
   ///
   /// \param ssid ssid of the network
   /// \param phrase WEP, WPA or WPA2 key
   ///
-  /// \return true if successful
-  bool connect(const char* ssid, const char* phrase);
-
-  /// \brief Check connection to the access point
-  ///
-  /// \return true if successful
-  bool is_connected();
-
-  /// \brief Copy current IP address to buffer
-  /// \param ip buffer to write IP to
-  void get_ip(char* ip);
+  /// \return Error status with error that occurred, if any.
+  ErrorStatus connect(const char* ssid, const char* phrase);
 
   /// \brief Disconnect the ESP8266 module from the access point
   ///
   /// \return true if successful
-  bool disconnect();
+  ErrorStatus disconnect();
 
-  /// \brief Scan all access points and put them in aplist (limited by size
-  /// param)
+  /// \brief Check connection to the access point
+  bool is_connected();
+
+  /// \brief Get the IP address of the ESP8266 module
+  struct in_addr get_ip();
+
+  /// \brief Scan all access points and return them.
   ///
-  /// \return true if successful
-  int scan(char* aplist, int size);
+  /// \param num number of access points to scan.
+  ///
+  /// \return vector of access points. if the vector is empty, then an error has
+  /// occurred.
+  std::vector<std::string> scan(std::size_t num);
 
-  /// \brief Send a request.
-  int http_get_request(
-    const char* address,
-    const char* payload,
-    const char* header,
-    char*       respBuffer,
-    size_t      respBufferSize);
-
-  /// \brief Reset the wifi module
-  bool reset();
-
-  /// \brief Obtains the current instance of the ESP8266
-  static WifiClient* getInstance() { return _inst; };
+  /// \see HTTPClient::Request
+  virtual HTTPResponsePromise Request(
+    const HTTPRequest&        request,
+    HTTPResponse&             response,
+    std::chrono::milliseconds send_timeout,
+    mbed::Callback<void()>    rcv_callback) override;
 
  private:
-  /// \brief Discards echoed characters
-  ///
-  /// \return true if successful
-  bool discardEcho();
+  /// \see HTTPClient::drop
+  virtual void drop(int req) override;
 
-  /// \brief Sends formatted string over serial port
-  ///
-  /// \param handle struct with buffer to check writeable and filestream to
-  /// write to
-  /// \param timeout timeout to wait writeable
-  /// \param fmt string to print, if this string inclues format specifiers the
-  /// additional arguments following fmt are formatted and inserted in the
-  /// resulting string replacing their respective specifiers.
-  int printCMD(
-    Handle*                   handle,
-    std::chrono::microseconds timeout,
-    const char*               fmt,
-    ...);
+  /// \see HTTPClient::available
+  virtual std::size_t available(int req) override;
 
-  /// \brief Flushes BufferedSerial Buffer
-  void flushBuffer(int len = -1);
+  /// \see HTTPClient::read
+  virtual ErrorStatus read(int req, mbed::Span<char>) override;
 
-  /// \brief Gets reply from ESP8662
-  /// \param resp optional buffer to store response
-  /// \return 1 if successful
-  int getreply(char* resp = 0, int size = 0);
+  /// \see HTTPClient::wait
+  virtual ErrorStatus wait(int req, std::chrono::milliseconds timeout) override;
 
-  /// \brief Get reply from ESP8266 in json format.
-  int getreply_json(char* resp, int size);
-
- protected:
-  mbed::BufferedSerial _serial;
-  mbed::DigitalOut     _reset_pin;
-
-  Handle _handle;
-
-  static WifiClient* _inst;
-
-  // TODO WISHLIST: ipv6?
-  // this requires nodemcu support
-  char                      _ip[16];
-  int                       _baud;
-  std::chrono::microseconds _timeout;
+ private:
+  mbed::BufferedSerial serial_;
+  int                  fd_;
+  struct in_addr       ip_;
 };
 
 } // namespace rb

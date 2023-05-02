@@ -1,45 +1,144 @@
 /// \file WifiClient.cpp
 /// \date 2023-04-26
 /// \author Raymond Barrett (rbarrett38@gatech.edu)
+/// \author mshakula (matvey@gatech.edu)
 ///
 /// \brief Wifi client for ESP8266.
 
+#define MBED_NO_GLOBAL_USING_DIRECTIVE
+
 #include "WifiClient.hpp"
+
+#include <ctime>
 
 // #include "Endpoint.h"
 #include <algorithm>
+#include <ratio>
 #include <string>
 
 #include <mbed.h>
+#include <rtos.h>
 
-// Debug is disabled by default
-// NOTE - MOST OF THESE FUNCTIONS DON'T WORK. WILL UPDATE LATER
-#if 0
-#define DBG(x, ...) \
-  printf(           \
-    "[ESP8266 : DBG]" x " \t[%s,%d]\r\n", ##__VA_ARGS__, __FILE__, __LINE__);
-#define WARN(x, ...) \
-  printf(            \
-    "[ESP8266 : WARN]" x " \t[%s,%d]\r\n", ##__VA_ARGS__, __FILE__, __LINE__);
-#define ERR(x, ...) \
-  printf(           \
-    "[ESP8266 : ERR]" x " \t[%s,%d]\r\n", ##__VA_ARGS__, __FILE__, __LINE__);
-#define INFO(x, ...) \
-  printf(            \
-    "[ESP8266 : INFO]" x " \t[%s,%d]\r\n", ##__VA_ARGS__, __FILE__, __LINE__);
-#ifndef ESP8266_ECHO
-#define ESP8266_ECHO 1
-#endif
-#else
-#define DBG(x, ...)
-#define WARN(x, ...)
-#define ERR(x, ...)
-#define INFO(x, ...)
-#endif
+#include "ErrorStatus.hpp"
+
+using namespace std::chrono_literals;
 
 // ======================= Local Definitions =========================
 
 namespace {
+
+/// \brief Sends formatted string over serial port
+///
+/// \param fd file descriptor of serial port.
+/// \param timeout timeout to wait writeable
+/// \param fmt string to print, if this string inclues format specifiers the
+/// additional arguments following fmt are formatted and inserted in the
+/// resulting string replacing their respective specifiers.
+///
+/// \return ErrorStatus with value of number of bytes written or error code.
+rb::ErrorStatus
+sendCMD_(int fd, const char* fmt, ...)
+{
+  using namespace rb;
+
+  constexpr std::chrono::milliseconds kTimeout{RB_WIFI_CLIENT_INTERNAL_TIMEOUT};
+
+  ErrorStatus ret{};
+  int         r;
+  va_list     args;
+  va_start(args, fmt);
+
+  struct pollfd fds = {.fd = fd, .events = POLLOUT, .revents = 0};
+  if ((r = poll(&fds, 1, kTimeout.count())) > 0) {
+    r = vdprintf(fd, fmt, args);
+    if (r < 0) {
+      ret = ErrorStatus{errno, "Write Error", r};
+    } else {
+      ret.value = r;
+    }
+  } else if (r == 0) {
+    ret = ErrorStatus{MBED_ERROR_CODE_ETIMEDOUT, "Timeout"};
+  } else {
+    ret = ErrorStatus{errno, "Poll Error", r};
+    RB_ERROR_LOG(ret);
+  }
+
+  va_end(args);
+  return ret;
+}
+
+/// \brief Sets up the esp8266 to be a wifi client.
+///
+/// \param fd file descriptor of serial port.
+/// \param baud baud rate of serial port.
+///
+/// \return ErrorStatus with value of number of bytes written or error code.
+rb::ErrorStatus
+espSetup_(int fd)
+{
+  // clang-format off
+  constexpr auto command =
+R"===(
+node.restart()
+uart.setup(0, %d, 8, uart.PARITY_NONE, uart.STOPBITS_1, 0)
+wifi.setmode(wifi.STATION)
+wifi.eventmon.register(wifi.eventmon.STA_GOT_IP, function(T)
+  print(T.IP)
+end)
+)===";
+  // clang-format on
+
+  return sendCMD_(fd, command, RB_WIFI_CLIENT_BAUD_RATE);
+}
+
+/// \brief Clear the file's buffer.
+///
+/// \param fd file descriptor of serial port.
+/// \param disard_echo number of bytes to clear.
+///
+/// \return ErrorStatus with value of number of bytes cleared or error code.
+rb::ErrorStatus
+clearBuffer_(int fd, int len = -1)
+{
+  using namespace rb;
+
+  constexpr std::chrono::milliseconds kTimeout{RB_WIFI_CLIENT_INTERNAL_TIMEOUT};
+
+  ErrorStatus ret{};
+  int         r;
+  char        c;
+
+  auto continue_read = [&]() {
+    return (ret.value < len || len < 0) && !(c == '\r' || c == '>');
+  };
+
+  struct pollfd fds = {.fd = fd, .events = POLLIN, .revents = 0};
+  while ((ret.value < len || len < 0) &&
+         (r = poll(&fds, 1, kTimeout.count())) > 0) {
+    if ((r = read(fd, read_buf.data(), read_buf.size())) > 0) {
+      ret.value += r;
+    } else if (r == 0) {
+      ret = ErrorStatus{
+        MBED_ERROR_CODE_ENOTRECOVERABLE,
+        "Reached serial eof, this should never happen."};
+      RB_ERROR_LOG(ret);
+      goto end;
+    } else if (r == -1) {
+      ret = rb::ErrorStatus{errno, "Read Error", r};
+      RB_ERROR_LOG(ret);
+      goto end;
+    }
+  }
+
+  if (len >= 0 && ret.value < len && r == 0) {
+    ret = rb::ErrorStatus{MBED_ERROR_CODE_ETIMEDOUT, "Timeout"};
+  } else if (r < 0) {
+    ret = rb::ErrorStatus{errno, "Poll Error", r};
+    RB_ERROR_LOG(ret);
+  }
+end:
+  return ret;
+}
 
 } // namespace
 
@@ -47,107 +146,87 @@ namespace {
 
 namespace rb {
 
-WifiClient* WifiClient::_inst;
-
-WifiClient::WifiClient(
-  PinName                   tx,
-  PinName                   rx,
-  PinName                   reset,
-  int                       baud,
-  std::chrono::microseconds timeout) :
-    _serial(tx, rx),
-    _reset_pin(reset)
+WifiClient::WifiClient(PinName tx, PinName rx) :
+    HTTPClient{},
+    serial_(tx, rx),
+    fd_(bind_to_fd(&serial_))
 {
-  INFO("Initializing WifiClient");
-
-  _baud    = baud;
-  _timeout = timeout;
-
-  _serial.set_baud(_baud);
-
-  _handle.serial     = &_serial;
-  FILE* serialstream = fdopen(&_serial, "w");
-  _handle.file       = serialstream;
-
-  _inst = this;
+  debug("\r\n[WifiClient] Initializing...");
+  serial_.set_baud(RB_WIFI_CLIENT_BAUD_RATE);
+  serial_.set_format(8, SerialBase::None, 1);
+  reset();
+  debug("\r\n[WifiClient] Initializing... done.");
 }
 
-bool
+void
 WifiClient::reset()
 {
-  if (_reset_pin.is_connected()) {
-    _reset_pin = 0;
-    wait_us(20);
-    _reset_pin = 1;
-  } else {
-    // Send reboot command in case reset is not connected
-    printCMD(&_handle, 1s, "node.restart()\r\n");
-    flushBuffer();
+  debug("\r\n[WifiClient] reset...");
+  ErrorStatus err;
+  if ((err = espSetup_(fd_))) {
+    RB_ERROR(err);
   }
-  return true;
-}
-
-bool
-WifiClient::init()
-{
-  // Reset device to clear state
-  return reset();
+  if ((err = clearBuffer_(fd_))) {
+    RB_ERROR(err);
+  }
+  debug("\r\n[WifiClient] reset.... done.");
 }
 
 bool
 WifiClient::is_connected()
 {
-  return (strcmp(_ip, "nil") != 0);
+  return ip_ != INADDR_ANY;
 }
 
-void
-WifiClient::get_ip(char* ip)
+struct in_addr
+WifiClient::get_ip()
 {
-  // printf("test: %s\n", _ip);
-  // ip = _ip;
-  memcpy(ip, _ip, 16);
-  // printf("test2: %s\n", ip);
+  return ip_;
 }
 
-bool
+ErrorStatus
 WifiClient::connect(const char* ssid, const char* phrase)
 {
-  // Configure as station with passed ssid and passphrase
-  printCMD(&_handle, 1s, "wifi.setmode(wifi.STATION)\r\n");
-  ThisThread::sleep_for(500ms);
-  printCMD(&_handle, 1s, "wifi.sta.config(\"%s\",\"%s\")\r\n", ssid, phrase);
-  flushBuffer();
+  // clang-format off
+  constexpr auto command =
+R"===(
+wifi.sta.config({ssid = "%s", pwd = "%s", auto = false, save = false})
+wifi.sta.connect()
+)===";
+  // clang-format on
 
-  Timer timer;
-  timer.start();
-  // keep checking for valid ip
-  flushBuffer();
-  while (timer.elapsed_time() < _timeout) {
-    printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
-    getreply(_ip, 16);
-    // printf("%s\n", _ip); //DEBUG ONLY
-    if (strcmp(_ip, "nil") != 0) {
-      timer.stop();
-      timer.reset();
-      return 1;
-    }
+  ErrorStatus err;
+  if ((err = sendCMD_(fd_, command, ssid.data(), phrase.data()))) {
+    RB_ERROR_LOG(err);
+    return err;
   }
-  timer.stop();
-  timer.reset();
-  return 0;
+  // wait for ip to return.
 }
 
-bool
+ErrorStatus
 WifiClient::disconnect()
 {
-  printCMD(&_handle, 1s, "wifi.sta.disconnect()\r\n");
-  flushBuffer();
-  Timer timer;
+  // clang-format off
+  constexpr auto command =
+R"===(
+wifi.sta.disconnect()
+)===";
+  // clang-format on
+
+  ErrorStatus err;
+  if ((err = sendCMD_(fd_, command))) {
+    RB_ERROR_LOG(err);
+    return err;
+  }
+
+  sendCMD_(fd_, "wifi.sta.disconnect()\r\n");
+  clearBuffer_();
+  mbed::Timer timer;
   timer.start();
   // make sure that wifi station has ip nil
   while (timer.elapsed_time() < _timeout) {
     memset(_ip, '\0', sizeof(_ip));
-    printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
+    sendCMD_(fd_, "print(wifi.sta.getip())\r\n");
     getreply(_ip, 3);
     // printf("%s\n", _ip); //DEBUG ONLY
     if (strcmp(_ip, "nil") == 0) {
@@ -156,29 +235,38 @@ WifiClient::disconnect()
       return 1;
     }
   }
-  printCMD(&_handle, 1s, "print(wifi.sta.getip())\r\n");
+  sendCMD_(fd_, "print(wifi.sta.getip())\r\n");
   getreply(_ip, 16);
   timer.stop();
   timer.reset();
   return 0;
 }
 
-int
-WifiClient::scan(char* aplist, int size)
+std::vector<std::string>
+WifiClient::scan(std::size_t num)
 {
-  printCMD(&_handle, 1s, "function listap(t)\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "for k,v in pairs(t) do\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "print(k)\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "end\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "end\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "wifi.sta.getap(listap)\r\n");
-  getreply(aplist, size);
-  return 1;
+  // clang-format off
+  constexpr auto command = 
+R"===(
+function listap(t)
+  for bssid,v in pairs(t) do
+    local ssid, rssi, authmode, channel = string.match(v, "([^,]+),([^,]+),([^,]+),([^,]*)")
+    print(string.format("%32s\n",ssid))
+  end
+end
+wifi.sta.getap(1, listap)
+)===";
+  // clang-format on
+
+  ErrorStatus              err;
+  std::vector<std::string> ssids;
+
+  ssids.reserve(num);
+  if ((err = sendCMD_(fd_, command))) {
+    RB_ERROR_LOG(err);
+    return ssids;
+  }
+  // GET REPLY.
 }
 
 int
@@ -189,143 +277,19 @@ WifiClient::http_get_request(
   char*       respBuffer,
   size_t      respBufferSize)
 {
-  printCMD(&_handle, 1s, "sk=net.createConnection(net.TCP, 0)\r\n");
-  flushBuffer();
-  printCMD(
-    &_handle, 1s, "sk:on(\"receive\", function(sck, c) print(c) end )\r\n");
-  flushBuffer();
-  printCMD(&_handle, 1s, "sk:connect(80,\"%s\")\r\n", address);
-  flushBuffer();
-  printCMD(
-    &_handle,
-    1s,
+  sendCMD_(fd_, "sk=net.createConnection(net.TCP, 0)\r\n");
+  clearBuffer_();
+  sendCMD_(fd_, "sk:on(\"receive\", function(sck, c) print(c) end )\r\n");
+  clearBuffer_();
+  sendCMD_(fd_, "sk:connect(80,\"%s\")\r\n", address);
+  clearBuffer_();
+  sendCMD_(
+    fd_,
     "sk:send(\"GET %s HTTP/1.1\\r\\nHost: %s\\r\\n%s\\r\\n\\r\\n\")\r\n",
     payload,
     address,
     header);
   getreply_json(respBuffer, respBufferSize);
-  return 1;
-}
-
-int
-WifiClient::printCMD(
-  Handle*                   handle,
-  std::chrono::microseconds timeout,
-  const char*               fmt,
-  ...)
-{
-  va_list args;
-  va_start(args, fmt);
-  Timer t;
-  t.start();
-  while (t.elapsed_time() < timeout) {
-    if (handle->serial->writable()) {
-      vfprintf(handle->file, fmt, args);
-      va_end(args);
-      return 1;
-    }
-  }
-  va_end(args);
-  return 0;
-}
-
-bool
-WifiClient::discardEcho()
-{
-  char c;
-  int  num;
-  while (true) {
-    num = _serial.read(&c, 1);
-    // pc.write(&c, num); //debug
-    if (num < 0)
-      return false;
-    else if (c == '>' || c == '\r') {
-      _serial.read(&c, 1);
-      return true;
-    }
-  }
-}
-
-void
-WifiClient::flushBuffer(int len)
-{
-  Timer t;
-  t.start();
-  int  n = 0;
-  char c;
-  while (t.elapsed_time() < 1s && n != len) {
-    if (_serial.readable()) {
-      _serial.read(&c, 1);
-      n++;
-      // pc.write(&c, 1); //DEBUG ONLY
-    }
-  }
-}
-
-// todo: clean up
-int
-WifiClient::getreply(char* resp, int size)
-{
-  if (!discardEcho()) {
-    return false;
-  }
-  Timer t;
-  t.start();
-  char c;
-  int  cnt = 0;
-  while (t.elapsed_time() < 3s) {
-    if (_serial.readable()) {
-      _serial.read(&c, 1);
-      // special case to filter
-      if (c == '>') {
-        flushBuffer(2);
-        continue;
-      }
-
-      if (resp) {
-        strncat(resp, &c, 1);
-        cnt++;
-      }
-      if (cnt == size)
-        break;
-      // pc.write(&c, num); //DEBUG ONLY
-    }
-  }
-  flushBuffer();
-  return 1;
-}
-
-int
-WifiClient::getreply_json(char* resp, int size)
-{
-  if (!discardEcho()) {
-    return false;
-  }
-  Timer t;
-  t.start();
-  char c;
-  int  cnt          = 0;
-  int  fwd_brackets = 0;
-  while (t.elapsed_time() < 10s) {
-    if (_serial.readable()) {
-      _serial.read(&c, 1);
-      // special case to filter
-      if (c == '{') {
-        fwd_brackets++;
-      } else if (c == '}') {
-        fwd_brackets--;
-      }
-
-      if (resp && fwd_brackets > 0) {
-        strncat(resp, &c, 1);
-        cnt++;
-      }
-      if (cnt == size)
-        break;
-      // pc.write(&c, num); //DEBUG ONLY
-    }
-  }
-  flushBuffer();
   return 1;
 }
 

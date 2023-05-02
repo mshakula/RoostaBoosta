@@ -9,6 +9,8 @@
 /// thanks to the open source code of
 /// [nanoprintf](https://github.com/charlesnicholson/nanoprintf).
 
+#define MBED_NO_GLOBAL_USING_DIRECTIVE
+
 #include "HTTPClient.hpp"
 
 #include <cmsis_os2.h>

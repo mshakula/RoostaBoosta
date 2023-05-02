@@ -449,11 +449,13 @@ class HTTPResponsePromise
   constexpr HTTPClient& client() const { return *client_; }
 
   constexpr ErrorStatus fail() const { return err_; }
-  constexpr             operator bool() const { return err_; }
+
+  constexpr operator bool() const { return req_id_ != 0; }
 
   /// \see HTTPClient::wait()
   HTTPResponsePromise& wait(
-    std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
+    std::chrono::milliseconds timeout = std::chrono::milliseconds{
+      RB_HTTP_CLIENT_DEFAULT_TIMEOUT});
 
   /// \see HTTPClient::drop()
   void drop();
@@ -504,6 +506,8 @@ class HTTPClient
   ///
   /// \param request The request to send.
   /// \param response The response object to read into.
+  /// \param send_timeout The timeout for sending the request. If the timeout
+  /// expires, the request will be dropped.
   /// \param rcv_callback The callback to call when data is received. May be
   /// called from ISR context. Usually, this should be left empty, and
   /// data_callback / header_callback should be used instead. Only useful in the
@@ -514,8 +518,10 @@ class HTTPClient
   ///
   /// \return A handle to a response promise object.
   virtual HTTPResponsePromise Request(
-    const HTTPRequest&     request,
-    HTTPResponse&          response,
+    const HTTPRequest&        request,
+    HTTPResponse&             response,
+    std::chrono::milliseconds send_timeout =
+      std::chrono::milliseconds{RB_HTTP_CLIENT_DEFAULT_TIMEOUT},
     mbed::Callback<void()> rcv_callback = {}) = 0;
 
  protected:

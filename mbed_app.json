@@ -66,6 +66,16 @@
       "help": "Default timeout for HTTPClient in milliseconds. 0 for no timeout.",
       "macro_name": "RB_HTTP_CLIENT_DEFAULT_TIMEOUT",
       "value": "10000"
+    },
+    "WifiClient.internal_timeout": {
+      "help": "Default timeout for WifiClient internal transfers in milliseconds.",
+      "macro_name": "RB_WIFI_CLIENT_INTERNAL_TIMEOUT",
+      "value": "500"
+    },
+    "WifiClient.baud_rate": {
+      "help": "Baud rate for WifiClient.",
+      "macro_name": "RB_WIFI_CLIENT_BAUD_RATE",
+      "value": "115200"
     }
   }
 }
