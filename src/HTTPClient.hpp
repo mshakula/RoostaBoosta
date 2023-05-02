@@ -460,9 +460,6 @@ class HTTPResponsePromise
   /// \see HTTPClient::drop()
   void drop();
 
-  /// \see HTTPClient::available()
-  std::size_t available() const;
-
   /// \see HTTPClient::read()
   HTTPResponsePromise& read(mbed::Span<char> buffer);
 
@@ -528,9 +525,6 @@ class HTTPClient
   /// \brief Drop current response, clearing buffers.
   virtual void drop(int req) = 0;
 
-  /// \brief Return the amount of available bytes to read.
-  virtual std::size_t available(int req) const = 0;
-
   /// \brief Read into buffer from the underlying transport.
   ///
   /// \param req The request ID to read from.
@@ -547,6 +541,16 @@ class HTTPClient
   ///
   /// \return Non-zero error code on failure.
   virtual ErrorStatus wait(int req, std::chrono::milliseconds timeout) = 0;
+
+  int& PromiseGetReqID(HTTPResponsePromise& promise) const
+  {
+    return promise.req_id_;
+  }
+
+  ErrorStatus& PromiseGetError(HTTPResponsePromise& promise) const
+  {
+    return promise.err_;
+  }
 };
 
 } // namespace rb

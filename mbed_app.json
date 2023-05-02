@@ -72,6 +72,11 @@
       "macro_name": "RB_WIFI_CLIENT_INTERNAL_TIMEOUT",
       "value": "500"
     },
+    "WifiClient.connection_timeout": {
+      "help": "Default timeout for WifiClient connection in milliseconds.",
+      "macro_name": "RB_WIFI_CLIENT_CONNECTION_TIMEOUT",
+      "value": "10000"
+    },
     "WifiClient.baud_rate": {
       "help": "Baud rate for WifiClient.",
       "macro_name": "RB_WIFI_CLIENT_BAUD_RATE",

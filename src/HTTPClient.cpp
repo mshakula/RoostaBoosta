@@ -19,24 +19,6 @@
 
 namespace {
 
-// std::uint32_t os_ret = osEventFlagsWait(
-//   flag_id_,
-//   RB_EVENT_FLAG_NETWORK_PACKET,
-//   osFlagsWaitAny,
-//   timeout.count() > 0 ? timeout.count() : osWaitForever);
-// if (os_ret & osFlagsError) {
-//   if (os_ret & osFlagsErrorTimeout) {
-//     err_ = ErrorStatus{
-//       MBED_ERROR_CODE_ETIMEDOUT,
-//       "Request timed out with timeout = ",
-//       timeout.count()};
-//   } else {
-//     err_ = ErrorStatus{
-//       MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT,
-//       "Unknown flags error while waiting for response."};
-//   };
-// }
-
 } // namespace
 
 // ====================== Global Definitions =========================
@@ -98,16 +80,6 @@ HTTPResponsePromise::drop()
 {
   if (req_id_) {
     client_->drop(req_id_);
-  }
-}
-
-std::size_t
-HTTPResponsePromise::available() const
-{
-  if (req_id_) {
-    return client_->available(req_id_);
-  } else {
-    return 0;
   }
 }
 

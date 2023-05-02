@@ -18,12 +18,11 @@
 #include <string_view>
 #include <vector>
 
-#include <netinet/ip.h>
-
-#include <mbed_config.h>
-
 #include <PinNames.h>
 #include <drivers/BufferedSerial.h>
+
+#include <rtos/EventFlags.h>
+#include <rtos/Semaphore.h>
 
 #include "HTTPClient.hpp"
 
@@ -35,6 +34,7 @@ namespace rb {
 /// lua module.
 class WifiClient : public HTTPClient
 {
+  constexpr static std::size_t kMaxRequests = 1;
 
  public:
   /// \brief Constructor
@@ -65,7 +65,7 @@ class WifiClient : public HTTPClient
   bool is_connected();
 
   /// \brief Get the IP address of the ESP8266 module
-  struct in_addr get_ip();
+  const char* get_ip();
 
   /// \brief Scan all access points and return them.
   ///
@@ -86,9 +86,6 @@ class WifiClient : public HTTPClient
   /// \see HTTPClient::drop
   virtual void drop(int req) override;
 
-  /// \see HTTPClient::available
-  virtual std::size_t available(int req) override;
-
   /// \see HTTPClient::read
   virtual ErrorStatus read(int req, mbed::Span<char>) override;
 
@@ -98,7 +95,19 @@ class WifiClient : public HTTPClient
  private:
   mbed::BufferedSerial serial_;
   int                  fd_;
-  struct in_addr       ip_;
+  std::array<char, 32> ip_;
+
+  struct ActiveRequest
+  {
+    int                    req_id;
+    mbed::Callback<void()> rcv_callback;
+    rtos::EventFlags       flags;
+  };
+
+  rtos::Semaphore req_sem_; // guard the active request.
+  ActiveRequest   request_; // the active request.
+
+  std::array<char, 512> send_buffer_;
 };
 
 } // namespace rb
