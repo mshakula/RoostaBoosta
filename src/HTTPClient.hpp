@@ -32,7 +32,9 @@
 #include <mbed_debug.h>
 #include <platform/Callback.h>
 #include <platform/Span.h>
-#include <rtos/EventFlags.h>
+#include <rtos/mbed_rtos_types.h>
+
+#include <rtos/internal/mbed_rtos_storage.h>
 
 #include "ErrorStatus.hpp"
 
@@ -365,16 +367,6 @@ struct HTTPEntityHeader : public HTTPSerializationBase<HTTPEntityHeader>
   ///
   /// \param tag The header field to match.
   constexpr std::string_view* getField(std::string_view tag);
-
-  /// \brief return if the request has been fully read.
-  bool eof() const;
-
-  /// \brief Return if the request has failed to be read / the error code.
-  ErrorStatus fail() const;
-
-  /// \brief Reset the output stream to the beginning. Clears any error / eof
-  /// flags.
-  void reset() const;
 };
 
 /// \brief A structure containing an HTTP request payload.
@@ -401,8 +393,8 @@ struct HTTPRequest : public HTTPSerializationBase<HTTPRequest>
   ~HTTPRequest()                                       = default;
 
   /// \brief Return if the request format is valid.
-  bool   valid() const;
-  inline operator bool() const { return valid(); }
+  constexpr bool valid() const { return method.valid() && !uri.empty(); }
+  constexpr      operator bool() const { return valid(); }
 };
 
 /// \brief A structure containing an HTTP response payload.
@@ -412,11 +404,8 @@ struct HTTPRequest : public HTTPSerializationBase<HTTPRequest>
 ///
 /// \see [rfc2616e](https://tools.ietf.org/html/rfc2616#section-6) for standard
 /// specification.
-class HTTPResponse
+struct HTTPResponse
 {
-  friend class HTTPClient;
-
- public:
   HTTPStatusCode     status_code;
   HTTPGeneralHeader  general_header;
   HTTPResponseHeader response_header;
@@ -429,9 +418,62 @@ class HTTPResponse
   constexpr HTTPResponse& operator=(const HTTPResponse&) = default;
   ~HTTPResponse()                                        = default;
 
+  constexpr bool success() const { return status_code.success(); }
+  constexpr      operator bool() const { return success(); }
+};
+
+class HTTPClient;
+
+/// \brief Helper handle to model a promise of an HTTP request.
+class HTTPResponsePromise
+{
+  friend class HTTPClient;
+
+ public:
+  /// \brief Construct a new HTTPRequestPromise.
+  HTTPResponsePromise(HTTPResponse& obj, HTTPClient& client);
+
+  HTTPResponsePromise(const HTTPResponsePromise&)            = delete;
+  HTTPResponsePromise& operator=(const HTTPResponsePromise&) = delete;
+  HTTPResponsePromise(HTTPResponsePromise&&);
+  HTTPResponsePromise& operator=(HTTPResponsePromise&&);
+
+  ~HTTPResponsePromise();
+
+  /// \brief Wait for response.
+  ///
+  /// \param timeout Timeout in milliseconds. If 0, wait forever.
+  HTTPResponsePromise& wait(
+    std::chrono::milliseconds timeout = std::chrono::milliseconds{0});
+
+  constexpr HTTPResponse& response() const { return *obj_; }
+  constexpr               operator HTTPResponse&() const { return response(); }
+
+  constexpr HTTPClient& client() const { return *client_; }
+
+  constexpr ErrorStatus fail() const { return err_; }
+  constexpr             operator bool() const { return err_; }
+
+  /// \see HTTPClient::drop()
+  void drop();
+
+  /// \see HTTPClient::available()
+  std::size_t available() const;
+
+  /// \see HTTPClient::read()
+  HTTPResponsePromise& read(mbed::Span<char> buffer);
+
+  /// \see HTTPClient::read()
+  inline HTTPResponsePromise& read(char* buffer, std::size_t count)
+  {
+    return read(mbed::Span<char>{buffer, count});
+  }
+
  private:
-  rtos::EventFlags event_flags_; // Event flags over cond variable for
-                                 // signalling from ISR.
+  HTTPResponse* obj_;
+  ErrorStatus   err_;
+  HTTPClient*   client_;
+  int           req_id_;
 };
 
 /// \brief A virtual interface for an HTTP/1.1 client.
@@ -440,25 +482,27 @@ class HTTPResponse
 /// HTTP Request function.
 class HTTPClient
 {
+  friend class HTTPResponsePromise;
+
  public:
   /// \brief Default constructor.
   HTTPClient() = default;
 
-  HTTPClient(const HTTPClient&)            = default;
-  HTTPClient& operator=(const HTTPClient&) = default;
+  HTTPClient(const HTTPClient&)            = delete;
+  HTTPClient& operator=(const HTTPClient&) = delete;
+  HTTPClient(HTTPClient&&)                 = default;
+  HTTPClient& operator=(HTTPClient&&)      = default;
 
   /// \brief Virtual destructor for polymorphism.
   virtual ~HTTPClient() = default;
 
-  /// \brief Perform a generic thread-blocking HTTP request.
+  /// \brief Perform a generic HTTP request.
   ///
-  /// Currently, this is a blocking API, however it may be changed to be
-  /// non-blocking in the future... seems like not too hard with the current
-  /// implementation.
+  /// The function will block until the request is sent, and will return a
+  /// promise handle to the response.
   ///
   /// \param request The request to send.
   /// \param response The response object to read into.
-  /// \param timeout The timeout for the request.
   /// \param rcv_callback The callback to call when data is received. May be
   /// called from ISR context. Usually, this should be left empty, and
   /// data_callback / header_callback should be used instead. Only useful in the
@@ -467,56 +511,35 @@ class HTTPClient
   /// necessary. Useful if need to read data into buffer defined at Request
   /// time, not Client creation time.
   ///
-  /// \return Non-zero error code on failure.
-  ErrorStatus Request(
-    const HTTPRequest&        request,
-    HTTPResponse&             response,
-    std::chrono::milliseconds timeout =
-      std::chrono::milliseconds{RB_HTTP_CLIENT_DEFAULT_TIMEOUT},
-    mbed::Callback<void()> rcv_callback = {});
+  /// \return A handle to a response promise object.
+  virtual HTTPResponsePromise Request(
+    const HTTPRequest&     request,
+    HTTPResponse&          response,
+    mbed::Callback<void()> rcv_callback = {}) = 0;
 
  protected:
-  /// \brief Send a request over the underlying transport. May be blocking.
-  ///
-  /// \param request The request to send.
-  ///
-  /// \return Non-zero error code on failure.
-  virtual ErrorStatus sendRequest(const HTTPRequest& request) = 0;
-
-  /// \brief Abort receive operation.
-  virtual void abort() = 0;
+  /// \brief Drop current response, clearing buffers.
+  virtual void drop(int req) = 0;
 
   /// \brief Return the amount of available bytes to read.
-  virtual std::size_t available() const = 0;
+  virtual std::size_t available(int req) const = 0;
 
   /// \brief Read into buffer from the underlying transport.
   ///
+  /// \param req The request ID to read from.
   /// \param buffer The buffer to read into. Reads at most buffer.size() bytes.
   ///
   /// \return If no error, ret.value will be the number of bytes read.
-  virtual ErrorStatus read(mbed::Span<char> buffer) = 0;
+  virtual ErrorStatus read(int req, mbed::Span<char> buffer) = 0;
 
-  /// \brief Read into buffer from the underlying transport.
+  /// \brief Wait for data to be available. Available will be non-zero after
+  /// successful return.
   ///
-  /// \see read(mbed::Span<char>, std::size_t&).
-  inline ErrorStatus read(char* buffer, std::size_t count)
-  {
-    return this->read(mbed::Span(buffer, count));
-  }
-
-  /// \brief Register callback to call whenever data is available. Can be called
-  /// multiple times.
-  ///
-  /// \param input_callback The callback to add. May run in ISR context.
+  /// \param req The request ID to wait for.
+  /// \param timeout Timeout in milliseconds. If 0, wait forever.
   ///
   /// \return Non-zero error code on failure.
-  virtual ErrorStatus registerInputCallback(
-    mbed::Callback<void()> input_callback) = 0;
-
-  /// \brief Unregister callback to call whensever data is available.
-  ///
-  /// \see registerInputCallback(mbed::Callback<ErrorStatus(HTTPResponse&)>).
-  virtual void unregisterInputCallback() = 0;
+  virtual ErrorStatus wait(int req, std::chrono::milliseconds timeout) = 0;
 };
 
 } // namespace rb

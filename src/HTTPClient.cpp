@@ -11,6 +11,8 @@
 
 #include "HTTPClient.hpp"
 
+#include <cmsis_os2.h>
+
 // ======================= Local Definitions =========================
 
 namespace {
@@ -21,69 +23,104 @@ namespace {
 
 namespace rb {
 
-#pragma region HTTPRequest
+#pragma region HTTPRequestResponse
 
-bool
-HTTPRequest::valid() const
+/// \brief Construct a new HTTPRequestPromise.
+HTTPResponsePromise::HTTPResponsePromise(
+  HTTPResponse& obj,
+  HTTPClient&   client) :
+    obj_{&obj},
+    client_{&client},
+    err_{}
 {
-  // static_assert(false, "Not implemented");
-  return true;
+  osEventFlagsAttr_t attr = {
+    .name      = "HTTPResponseEventFlag",
+    .attr_bits = 0,
+    .cb_mem    = &flag_mem_,
+    .cb_size   = sizeof(flag_mem_)};
+  flag_id_ = osEventFlagsNew(&attr);
 }
 
-#pragma endregion HTTPRequest
-#pragma region    HTTPResponse
+HTTPResponsePromise::HTTPResponsePromise(HTTPResponsePromise&& other) :
+    obj_{other.obj_},
+    client_{other.client_},
+    err_{other.err_},
+    flag_id_{other.flag_id_}
+{
+  std::memcpy(&flag_mem_, &other.flag_mem_, sizeof(flag_mem_));
+  other.flag_id_ = nullptr;
+}
 
-#pragma endregion HTTPResponse
+HTTPResponsePromise&
+HTTPResponsePromise::operator=(HTTPResponsePromise&& other)
+{
+  if (this != &other) {
+    obj_     = other.obj_;
+    client_  = other.client_;
+    err_     = other.err_;
+    flag_id_ = other.flag_id_;
+    std::memcpy(&flag_mem_, &other.flag_mem_, sizeof(flag_mem_));
+    other.flag_id_ = nullptr;
+  }
+  return *this;
+}
+
+HTTPResponsePromise::~HTTPResponsePromise()
+{
+  if (flag_id_ != nullptr) {
+    if (osEventFlagsDelete(flag_id_) != osOK) {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_FAILED_OPERATION, "Failed to delete event flag."};
+      RB_ERROR(err_); // fatal error in dtor -- this is a bug.
+    }
+  }
+}
+
+HTTPResponsePromise&
+HTTPResponsePromise::wait(std::chrono::milliseconds timeout)
+{
+  std::uint32_t os_ret = osEventFlagsWait(
+    flag_id_,
+    RB_EVENT_FLAG_NETWORK_PACKET,
+    osFlagsWaitAny,
+    timeout.count() > 0 ? timeout.count() : osWaitForever);
+  if (os_ret & osFlagsError) {
+    if (os_ret & osFlagsErrorTimeout) {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_ETIMEDOUT,
+        "Request timed out with timeout = ",
+        timeout.count()};
+    } else {
+      err_ = ErrorStatus{
+        MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT,
+        "Unknown flags error while waiting for response."};
+    };
+  }
+  return *this;
+}
+
+void
+HTTPResponsePromise::drop()
+{
+  client_->client_->unregisterInputCallback();
+  client_->drop();
+}
+
+std::size_t
+HTTPResponsePromise::available() const
+{
+  return client_->available(req_id_);
+}
+
+HTTPResponsePromise&
+HTTPResponsePromise::read(mbed::Span<char> buffer)
+{
+  err_ = client_->read(req_id_, buffer);
+  return *this;
+}
+
+#pragma endregion HTTPRequestResponse
 #pragma region    HTTPClient
-
-ErrorStatus
-HTTPClient::Request(
-  const HTTPRequest&        request,
-  HTTPResponse&             response,
-  std::chrono::milliseconds timeout,
-  mbed::Callback<void()>    rcv_callback)
-{
-  //   ErrorStatus   err;
-  //   std::uint32_t os_ret;
-
-  //   os_ret = response.event_flags_.set(RB_EVENT_FLAG_NETWORK_PACKET);
-  //   if (os_ret & osFlagsError)
-  //     return ErrorStatus{
-  //       MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to clear flags",
-  //       os_ret};
-
-  //   if (!request)
-  //     return ErrorStatus{MBED_ERROR_CODE_INVALID_FORMAT, "Invalid request"};
-
-  //   auto input_callback = [this, rcv_callback, &response]() {
-  //     // If there is a critical ISR rcv callback, call it.
-  //     if (rcv_callback)
-  //       rcv_callback();
-
-  //     // Signal to calling thread that data is available.
-  //     std::uint32_t os_ret =
-  //     response.event_flags_.set(RB_EVENT_FLAG_NETWORK_PACKET); if (os_ret &
-  //     osFlagsError) {
-  //       ErrorStatus err{
-  //         MBED_ERROR_CODE_RTOS_EVENT_FLAGS_EVENT, "Unable to set flags",
-  //         os_ret};
-  //       RB_ERROR(err);
-  //     }
-  //   };
-
-  //   if ((err = registerInputCallback(input_callback)))
-  //     goto err0;
-
-  //   // Send request.
-  //   if ((err = sendRequest(request)))
-  //     goto err1;
-
-  // err1:
-  //   unregisterInputCallback();
-  // err0:
-  //   return ErrorStatus{};
-  return ErrorStatus{};
-}
 
 #pragma endregion HTTPClient
 
